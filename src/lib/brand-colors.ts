@@ -88,6 +88,16 @@ export function resolveBrandColors(params: {
   return out;
 }
 
+/** Cores da marca no raster `public/logo.png`; só nesse par exibimos o PNG. */
+export const RASTER_BRAND_PRIMARY_HEX = '#006437';
+export const RASTER_BRAND_SECONDARY_HEX = '#beac4e';
+
+export function shouldUseRasterBrandLogo(resolved: ResolvedBrandColors): boolean {
+  const p = resolved.primary ? normalizeBrandHex(resolved.primary) : null;
+  const s = resolved.secondary ? normalizeBrandHex(resolved.secondary) : null;
+  return p === RASTER_BRAND_PRIMARY_HEX && s === RASTER_BRAND_SECONDARY_HEX;
+}
+
 function hoverMix(base: string): string {
   return `color-mix(in srgb, ${base} 82%, black)`;
 }

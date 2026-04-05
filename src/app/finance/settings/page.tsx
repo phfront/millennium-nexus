@@ -12,7 +12,7 @@ export default async function FinanceSettingsPage() {
     <div className="flex flex-col gap-6 max-w-lg mx-auto">
       <PageHeader
         title="Configurações"
-        subtitle="Preferências do Nexus Finance que se aplicam a todas as planilhas e ao seletor de mês do dashboard."
+        subtitle="Preferências do módulo Finanças que se aplicam a todas as planilhas e ao seletor de mês do dashboard."
       />
       <SpreadsheetSettingsForm />
       <ExpenseReminderSettingsForm />

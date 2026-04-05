@@ -6,7 +6,7 @@ import { AdminModuleMatrix } from './AdminModuleMatrix';
 import type { Module, Profile } from '@/types/database';
 
 export const metadata = {
-  title: 'Administração — Nexus',
+  title: 'Administração — Millennium Nexus',
 };
 
 export default async function AdminPage() {

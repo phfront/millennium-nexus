@@ -7,7 +7,7 @@ import { ModuleBottomNav } from '@/components/daily-goals/shell/ModuleBottomNav'
 import { ModuleHeader } from '@/components/daily-goals/shell/ModuleHeader';
 
 export const metadata: Metadata = {
-  title: 'Daily Goals — Nexus',
+  title: 'Metas diárias — Millennium Nexus',
   description: 'Controle suas metas diárias',
 };
 

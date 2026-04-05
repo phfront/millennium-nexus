@@ -91,7 +91,7 @@ export function PwaInstallCard() {
         <Card.Body className="flex items-start gap-3">
           <Check size={20} className="text-success shrink-0 mt-0.5" aria-hidden />
           <p className="text-sm text-text-secondary">
-            O Nexus está aberto como PWA (modo standalone).
+            O Millennium Nexus está aberto como PWA (modo standalone).
           </p>
         </Card.Body>
       </Card>
@@ -118,7 +118,7 @@ export function PwaInstallCard() {
             </p>
             {canInstall ? (
               <Button leftIcon={<Download size={16} />} onClick={handleInstall} isLoading={installing}>
-                Instalar Nexus
+                Instalar app
               </Button>
             ) : (
               <p className="text-xs text-text-muted">

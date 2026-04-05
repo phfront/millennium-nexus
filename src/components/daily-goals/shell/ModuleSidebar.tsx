@@ -1,7 +1,8 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { Sidebar, NavItem, Divider, NexusLogo } from '@phfront/millennium-ui';
+import { Sidebar, NavItem, Divider } from '@phfront/millennium-ui';
+import { BrandLogo } from '@/components/shell/BrandLogo';
 import { LayoutDashboard, History, Target, Bell, Home } from 'lucide-react';
 
 const NAV_LINKS = [
@@ -14,7 +15,7 @@ const NAV_LINKS = [
 export function ModuleSidebar() {
   const pathname = usePathname();
 
-  const logo = <NexusLogo size={32} />;
+  const logo = <BrandLogo size={32} />;
 
   const links = NAV_LINKS.map((l) => ({
     ...l,

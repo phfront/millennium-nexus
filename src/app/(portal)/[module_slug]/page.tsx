@@ -59,6 +59,6 @@ export default async function ModulePage({ params }: ModulePageProps) {
 export async function generateMetadata({ params }: ModulePageProps) {
   const { module_slug } = await params;
   return {
-    title: `${module_slug} — Nexus`,
+    title: `${module_slug} — Millennium Nexus`,
   };
 }

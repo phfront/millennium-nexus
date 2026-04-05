@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Nexus",
+  "name": "Millennium Nexus",
   "short_name": "Nexus",
-  "description": "Portal centralizador do ecossistema Nexus",
+  "description": "Portal centralizador do ecossistema Millennium Nexus",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

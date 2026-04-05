@@ -7,7 +7,7 @@ import { ModuleBottomNav } from '@/components/health/shell/ModuleBottomNav';
 import { ModuleHeader } from '@/components/health/shell/ModuleHeader';
 
 export const metadata: Metadata = {
-  title: 'Nexus Health',
+  title: 'Saúde — Millennium Nexus',
   description: 'Acompanhe sua jornada de saúde e composição corporal',
 };
 

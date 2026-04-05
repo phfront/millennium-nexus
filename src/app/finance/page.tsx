@@ -9,7 +9,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6 max-w-4xl mx-auto">
-      <PageHeader title="Nexus Finance" subtitle="Visão geral das suas finanças." />
+      <PageHeader title="Finanças" subtitle="Visão geral das suas finanças no Millennium Nexus." />
       <MonthlyDashboard />
     </div>
   );

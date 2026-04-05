@@ -33,7 +33,7 @@ export async function POST() {
   }
 
   const payload = JSON.stringify({
-    title: 'Nexus',
+    title: 'Millennium Nexus',
     body: 'Notificação de teste — push funcionando!',
     url: '/',
     tag: 'nexus-test',

@@ -1,11 +1,19 @@
-'use client';
+"use client";
 
-import { usePathname, useRouter } from 'next/navigation';
-import { Sidebar, Avatar, Divider, Icon, NavItem, NexusLogo } from '@phfront/millennium-ui';
-import { useCurrentUser } from '@/hooks/use-current-user';
-import { createClient } from '@/lib/supabase/client';
-import { LogOut, Settings, Home, Shield } from 'lucide-react';
-import type { Module } from '@/types/database';
+import { usePathname, useRouter } from "next/navigation";
+import {
+  Sidebar,
+  Avatar,
+  Divider,
+  Icon,
+  NavItem,
+  Button,
+} from "@phfront/millennium-ui";
+import { BrandLogo } from "@/components/shell/BrandLogo";
+import { useCurrentUser } from "@/hooks/use-current-user";
+import { createClient } from "@/lib/supabase/client";
+import { LogOut, Settings, Home, Shield } from "lucide-react";
+import type { Module } from "@/types/database";
 
 interface AppSidebarProps {
   modules: Module[];
@@ -20,21 +28,28 @@ export function AppSidebar({ modules }: AppSidebarProps) {
   async function handleLogout() {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.push('/login');
+    router.push("/login");
     router.refresh();
   }
 
-  const activeModules = modules.filter((m) => m.is_active).sort((a, b) => a.sort_order - b.sort_order);
+  const activeModules = modules
+    .filter((m) => m.is_active)
+    .sort((a, b) => a.sort_order - b.sort_order);
 
   const links = [
-    { href: '/', icon: <Home size={18} />, label: 'Início', isActive: pathname === '/' },
+    {
+      href: "/",
+      icon: <Home size={18} />,
+      label: "Início",
+      isActive: pathname === "/",
+    },
     ...(profile?.is_admin
       ? [
           {
-            href: '/admin',
+            href: "/admin",
             icon: <Shield size={18} />,
-            label: 'Admin',
-            isActive: pathname === '/admin',
+            label: "Admin",
+            isActive: pathname === "/admin",
           },
         ]
       : []),
@@ -46,28 +61,37 @@ export function AppSidebar({ modules }: AppSidebarProps) {
     })),
   ];
 
-  const logo = <NexusLogo size={32} />;
+  const logo = <BrandLogo size={32} />;
 
   const footer = (
     <div className="flex flex-col gap-1">
-      <NavItem href="/profile" icon={<Settings size={18} />} label="Perfil & Config." isActive={pathname === '/profile'} />
       {profile && (
         <div className="flex items-center gap-3 px-3 py-2">
-          <Avatar src={profile.avatar_url} name={profile.full_name ?? undefined} size="sm" />
+          <Avatar
+            src={profile.avatar_url}
+            name={profile.full_name ?? undefined}
+            size="sm"
+          />
           <div className="min-w-0">
-            <p className="text-xs font-medium text-text-primary truncate">{profile.full_name ?? 'Usuário'}</p>
+            <p className="text-xs font-medium text-text-primary truncate">
+              {profile.full_name ?? "Usuário"}
+            </p>
             <p className="text-xs text-text-muted truncate">{user?.email}</p>
           </div>
         </div>
       )}
-      <Divider />
-      <button
+      <NavItem
+        href="/profile"
+        icon={<Settings size={18} />}
+        label="Perfil & Config."
+        isActive={pathname === "/profile"}
+      />
+      <NavItem
         onClick={handleLogout}
-        className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-text-secondary hover:text-danger hover:bg-danger-bg transition-colors w-full"
-      >
-        <LogOut size={18} />
-        <span>Sair</span>
-      </button>
+        icon={<LogOut size={18} />}
+        label="Sair"
+        isActive={pathname === "/logout"}
+      />
     </div>
   );
 

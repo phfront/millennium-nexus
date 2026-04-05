@@ -10,6 +10,7 @@ import {
   NEXUS_BRAND_COOKIE_NAME,
 } from '@/lib/brand-colors';
 import { BrandColorsProvider } from '@/components/providers/BrandColorsProvider';
+import { BrandResolvedServerProvider } from '@/components/providers/BrandResolvedServerProvider';
 import { ToastProvider } from '@phfront/millennium-ui';
 import { ThemeInitializer } from '@/components/providers/ThemeInitializer';
 import { RegisterServiceWorker } from '@/components/pwa/RegisterServiceWorker';
@@ -19,9 +20,9 @@ import './globals.css';
 const NEXUS_THEME_BOOTSTRAP = `(function(){var t=localStorage.getItem('nexus-theme');try{t=JSON.parse(t)?.state?.theme}catch(e){}if(t!=='light'){document.documentElement.classList.add('dark')}})()`;
 
 export const metadata: Metadata = {
-  title: 'Nexus',
-  description: 'Portal centralizador do ecossistema Nexus',
-  applicationName: 'Nexus',
+  title: 'Millennium Nexus',
+  description: 'Portal centralizador do ecossistema Millennium Nexus',
+  applicationName: 'Millennium Nexus',
   manifest: '/manifest.json',
   icons: {
     apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
@@ -29,7 +30,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Nexus',
+    title: 'Millennium Nexus',
   },
   formatDetection: {
     telephone: false,
@@ -68,12 +69,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: NEXUS_THEME_BOOTSTRAP }}
         />
-        <BrandColorsProvider>
-          <RegisterServiceWorker />
-          <ThemeInitializer />
-          <ToastProvider position="top-right" />
-          {children}
-        </BrandColorsProvider>
+        <BrandResolvedServerProvider value={brandResolved}>
+          <BrandColorsProvider>
+            <RegisterServiceWorker />
+            <ThemeInitializer />
+            <ToastProvider position="top-right" />
+            {children}
+          </BrandColorsProvider>
+        </BrandResolvedServerProvider>
       </body>
     </html>
   );

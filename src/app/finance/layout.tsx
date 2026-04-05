@@ -8,7 +8,7 @@ import { ModuleBottomNav } from '@/components/finance/shell/ModuleBottomNav';
 import { ModuleHeader } from '@/components/finance/shell/ModuleHeader';
 
 export const metadata: Metadata = {
-  title: 'Nexus Finance',
+  title: 'Finanças — Millennium Nexus',
   description: 'Controle suas receitas, despesas, assinaturas e cobranças',
 };
 

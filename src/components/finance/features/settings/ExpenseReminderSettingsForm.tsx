@@ -55,7 +55,7 @@ export function ExpenseReminderSettingsForm() {
       'Lembretes guardados',
       days.length === 0
         ? 'Sem dias selecionados, não serão enviados pushes de vencimento.'
-        : 'Ativa as notificações push no perfil do Nexus se ainda não estiverem ligadas.',
+        : 'Ativa as notificações push no perfil do Millennium Nexus se ainda não estiverem ligadas.',
     );
   }
 
@@ -67,7 +67,7 @@ export function ExpenseReminderSettingsForm() {
       <div>
         <h3 className="text-sm font-semibold text-text-primary mb-1">Lembretes de vencimento (despesas)</h3>
         <p className="text-xs text-text-muted mb-3">
-          Para despesas com data ou dia de vencimento preenchidos, o Nexus envia um push no horário abaixo
+          Para despesas com data ou dia de vencimento preenchidos, o Millennium Nexus envia um push no horário abaixo
           (no teu fuso definido no perfil do portal) nos dias que escolheres antes do vencimento. Requer
           notificações push ativadas no perfil.
         </p>
