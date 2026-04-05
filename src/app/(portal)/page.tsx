@@ -22,16 +22,7 @@ async function DashboardContent() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        className="mb-0"
-        title={`Olá, ${firstName ?? 'usuário'} 👋`}
-        subtitle="Bem-vindo ao seu ecossistema pessoal."
-      />
-
       <section>
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-          Módulos
-        </h2>
         {modules.length === 0 && allModules.length > 0 ? (
           <EmptyState
             className="py-12"
