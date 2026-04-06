@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { Plus, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { Modal, Input, Button, Skeleton, useToast, ToggleStatusBadge } from '@phfront/millennium-ui';
 import { useReceivables } from '@/hooks/finance/use-receivables';
+import { useUserStore } from '@/store/user-store';
+import { getLocalDateStr } from '@/lib/daily-goals/timezone';
 import { formatBRL, formatDate, formatMonth } from '@/lib/finance/format';
 import { receivableIsFullyPaid, receivableOutstanding } from '@/lib/finance/finance';
 import type { Receivable } from '@/types/finance';
@@ -161,6 +163,7 @@ export function ReceivablesList() {
     getByPerson,
     getPendingTotal,
   } = useReceivables();
+  const user = useUserStore((s) => s.user);
   const { toast } = useToast();
   const [filter, setFilter] = useState<Filter>('all');
   const [showModal, setShowModal] = useState(false);
@@ -185,7 +188,7 @@ export function ReceivablesList() {
         amount_paid: amountPaid,
         reference_month: form.reference_month ? form.reference_month + '-01' : null,
         is_paid: amountPaid >= amount,
-        paid_at: amountPaid >= amount ? new Date().toISOString().split('T')[0] : null,
+        paid_at: amountPaid >= amount ? getLocalDateStr(user?.profile?.timezone) : null,
       });
       setForm(EMPTY_FORM);
       setShowModal(false);

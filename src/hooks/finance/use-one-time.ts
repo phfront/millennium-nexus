@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useUserStore } from '@/store/user-store';
 import { usePlanningHorizonListener } from '@/hooks/finance/use-planning-horizon-listener';
 import { normalizeExpenseMonthKey } from '@/lib/finance/finance';
+import { getLocalDateStr } from '@/lib/daily-goals/timezone';
 import type { OneTimeExpense } from '@/types/finance';
 
 export function useOneTime() {
@@ -85,7 +86,7 @@ export function useOneTime() {
     const existing = expenses.find((e) => e.id === id);
     if (!existing) return;
     const newPaid = !existing.is_paid;
-    const paidAt = newPaid ? new Date().toISOString().split('T')[0] : null;
+    const paidAt = newPaid ? getLocalDateStr(user?.profile?.timezone) : null;
 
     setExpenses((prev) =>
       prev.map((e) => (e.id === id ? { ...e, is_paid: newPaid, paid_at: paidAt } : e)),

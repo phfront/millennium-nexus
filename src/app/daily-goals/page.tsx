@@ -17,7 +17,7 @@ export default function DashboardPage() {
   const user = useUserStore((s) => s.user);
   const selectedDate = useDailyGoalsStore((s) => s.selectedDate);
   const { trackers: allTrackers, isLoading } = useTrackers(true);
-  const { getLogForTracker, upsertLog, savingTrackerId } = useLogs();
+  const { getLogForTracker, upsertLog, savingTrackerId } = useLogs(selectedDate);
 
   // Filtra apenas trackers agendados para o dia selecionado
   const trackers = allTrackers.filter((t) =>

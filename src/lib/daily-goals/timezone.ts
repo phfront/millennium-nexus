@@ -1,9 +1,12 @@
+/** Alinhado ao default da migration `006_user_timezone.sql` e ao perfil sem timezone explícito. */
+export const DEFAULT_USER_TIMEZONE = 'America/Sao_Paulo';
+
 /**
  * Retorna a data de "hoje" no fuso horário informado no formato 'YYYY-MM-DD'.
- * Se o timezone for inválido ou não suportado, cai silenciosamente para UTC.
+ * Sem timezone usa o default do produto (Brasília), não UTC — evita “virar o dia” às 21h no Brasil.
  */
 export function getLocalDateStr(timezone?: string | null): string {
-  const tz = timezone ?? 'UTC';
+  const tz = timezone?.trim() || DEFAULT_USER_TIMEZONE;
   try {
     return new Intl.DateTimeFormat('en-CA', {
       timeZone: tz,
@@ -21,7 +24,7 @@ export function getLocalDateStr(timezone?: string | null): string {
  * Converte um instante ISO (ex.: created_at) para 'YYYY-MM-DD' no fuso informado.
  */
 export function formatDateInTimezone(isoTimestamp: string, timezone?: string | null): string {
-  const tz = timezone ?? 'UTC';
+  const tz = timezone?.trim() || DEFAULT_USER_TIMEZONE;
   try {
     return new Intl.DateTimeFormat('en-CA', {
       timeZone: tz,

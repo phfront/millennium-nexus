@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useUserStore } from '@/store/user-store';
 import { receivableIsFullyPaid } from '@/lib/finance/finance';
+import { getLocalDateStr } from '@/lib/daily-goals/timezone';
 import type { Receivable } from '@/types/finance';
 
 function normalizeReceivable(raw: Record<string, unknown>): Receivable {
@@ -15,13 +16,13 @@ function normalizeReceivable(raw: Record<string, unknown>): Receivable {
   };
 }
 
-function paidState(amount: number, amountPaid: number) {
+function paidState(amount: number, amountPaid: number, timezone?: string | null) {
   const paid = Math.max(0, Math.min(amount, amountPaid));
   const full = paid >= amount && amount > 0;
   return {
     amount_paid: paid,
     is_paid: full,
-    paid_at: full ? new Date().toISOString().split('T')[0] : null,
+    paid_at: full ? getLocalDateStr(timezone) : null,
   };
 }
 
@@ -49,7 +50,7 @@ export function useReceivables() {
   async function addReceivable(values: Omit<Receivable, 'id' | 'user_id' | 'created_at'>) {
     if (!user) return;
     const amount = Number(values.amount);
-    const ps = paidState(amount, Number(values.amount_paid ?? 0));
+    const ps = paidState(amount, Number(values.amount_paid ?? 0), user?.profile?.timezone);
     const supabase = createClient();
     const { data, error } = await supabase
       .from('finance_receivables')
@@ -76,7 +77,7 @@ export function useReceivables() {
     const existing = receivables.find((r) => r.id === id);
     if (!existing) return;
     const amount = Number(existing.amount);
-    const ps = paidState(amount, rawPaid);
+    const ps = paidState(amount, rawPaid, user?.profile?.timezone);
 
     setReceivables((prev) =>
       prev.map((r) =>
@@ -115,7 +116,7 @@ export function useReceivables() {
     const amount = Number(existing.amount);
     const currentlyFull = receivableIsFullyPaid(existing);
     const nextPaid = currentlyFull ? 0 : amount;
-    const ps = paidState(amount, nextPaid);
+    const ps = paidState(amount, nextPaid, user?.profile?.timezone);
 
     setReceivables((prev) =>
       prev.map((r) =>

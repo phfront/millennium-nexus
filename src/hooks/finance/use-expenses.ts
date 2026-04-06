@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useUserStore } from '@/store/user-store';
 import { usePlanningHorizonListener } from '@/hooks/finance/use-planning-horizon-listener';
 import { buildMonthRange, monthInputValueToFirstDay, toMonthDate } from '@/lib/finance/finance';
+import { getLocalDateStr } from '@/lib/daily-goals/timezone';
 import type { ExpenseCategory, ExpenseItem, ExpenseEntry } from '@/types/finance';
 
 function normalizeMonthKey(m: string): string {
@@ -177,7 +178,7 @@ export function useExpenses() {
         ? Number(item.default_amount)
         : 0;
     const newPaid = !(existing?.is_paid ?? false);
-    const paidAt = newPaid ? new Date().toISOString().split('T')[0] : null;
+    const paidAt = newPaid ? getLocalDateStr(user?.profile?.timezone) : null;
 
     const supabase = createClient();
     const { data, error } = await supabase

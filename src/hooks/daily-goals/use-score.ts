@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useUserStore } from '@/store/user-store';
+import { getLocalDateStr } from '@/lib/daily-goals/timezone';
 
 export function useScore() {
   const user = useUserStore((s) => s.user);
-  const today = new Date().toISOString().split('T')[0];
+  const today = useMemo(
+    () => getLocalDateStr(user?.profile?.timezone),
+    [user?.profile?.timezone],
+  );
   const [dailyScore, setDailyScore] = useState<number>(0);
   const [totalScore, setTotalScore] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);

@@ -1,19 +1,19 @@
 'use client';
 
 import { create } from 'zustand';
+import { getLocalDateStr } from '@/lib/daily-goals/timezone';
 
 type DailyGoalsStore = {
   selectedDate: string;
   setSelectedDate: (date: string) => void;
 };
 
-// Valor inicial em UTC; será atualizado pelo UserProvider assim que o perfil for carregado
-// (usando o fuso horário configurado pelo usuário em getLocalDateStr)
-function todayISO(): string {
-  return new Date().toISOString().split('T')[0];
+/** “Hoje” no fuso default do produto até o perfil carregar (UserProvider sincroniza). */
+function initialLocalToday(): string {
+  return getLocalDateStr();
 }
 
 export const useDailyGoalsStore = create<DailyGoalsStore>((set) => ({
-  selectedDate: todayISO(),
+  selectedDate: initialLocalToday(),
   setSelectedDate: (date) => set({ selectedDate: date }),
 }));
