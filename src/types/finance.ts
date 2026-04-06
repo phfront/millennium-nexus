@@ -51,6 +51,8 @@ export type ExpenseEntry = {
   amount: number;
   is_paid: boolean;
   paid_at: string | null;
+  /** Nota opcional ao marcar como pago (histórico / arquivo do mês). */
+  paid_note: string | null;
   created_at: string;
 };
 
@@ -64,6 +66,7 @@ export type OneTimeExpense = {
   due_date: string | null;
   is_paid: boolean;
   paid_at: string | null;
+  paid_note: string | null;
   created_at: string;
 };
 
@@ -146,4 +149,6 @@ export type FinanceMonthSnapshotEntry = {
   /** só para pontuais (YYYY-MM-DD) */
   due_date: string | null;
   sort_order: number;
+  /** Nota opcional ao marcar despesa/pontual como pago. */
+  paid_note: string | null;
 };

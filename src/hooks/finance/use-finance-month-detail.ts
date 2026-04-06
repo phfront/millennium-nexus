@@ -14,6 +14,7 @@ export type SnapshotExpenseRow = {
   item_name: string;
   amount: number;
   is_paid: boolean | null;
+  paid_note: string | null;
 };
 
 export type SnapshotExpenseCategoryGroup = {
@@ -27,6 +28,7 @@ export type SnapshotOneTimeRow = {
   amount: number;
   is_paid: boolean | null;
   due_date: string | null;
+  paid_note: string | null;
 };
 
 export type MonthDetailData = {
@@ -89,6 +91,7 @@ export function useFinanceMonthDetail(month: string | null) {
         item_name: e.item_name,
         amount: Number(e.amount),
         is_paid: e.is_paid,
+        paid_note: e.paid_note ?? null,
       });
     }
     const expenseGroups = Array.from(categoryMap.values());
@@ -100,6 +103,7 @@ export function useFinanceMonthDetail(month: string | null) {
         amount: Number(e.amount),
         is_paid: e.is_paid,
         due_date: e.due_date,
+        paid_note: e.paid_note ?? null,
       }));
 
     const totalIncome = income.reduce((s, r) => s + r.amount, 0);

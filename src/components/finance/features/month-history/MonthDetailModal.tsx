@@ -34,6 +34,17 @@ function PaidBadge({ isPaid }: { isPaid: boolean | null }) {
   );
 }
 
+function PaidNoteBlock({ text }: { text: string | null | undefined }) {
+  const t = text?.trim();
+  if (!t) return null;
+  return (
+    <p className="text-[11px] text-text-secondary mt-1.5 border-l-2 border-border/80 pl-2 leading-snug whitespace-pre-wrap">
+      <span className="font-medium text-text-muted">Nota: </span>
+      {t}
+    </p>
+  );
+}
+
 export function MonthDetailModal({ month, onClose }: Props) {
   const {
     income,
@@ -126,13 +137,14 @@ export function MonthDetailModal({ month, onClose }: Props) {
                           {g.items.map((item, ii) => (
                             <li
                               key={ii}
-                              className="flex items-center gap-3 px-3 py-2 border-b border-border/40 last:border-0 bg-surface-2/80 text-sm"
+                              className="flex items-start gap-3 px-3 py-2 border-b border-border/40 last:border-0 bg-surface-2/80 text-sm"
                             >
-                              <span className="flex-1 text-text-primary truncate">
-                                {item.item_name}
-                              </span>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-text-primary block truncate">{item.item_name}</span>
+                                <PaidNoteBlock text={item.paid_note} />
+                              </div>
                               <PaidBadge isPaid={item.is_paid} />
-                              <span className="tabular-nums text-text-secondary shrink-0">
+                              <span className="tabular-nums text-text-secondary shrink-0 pt-0.5">
                                 {formatBRL(item.amount)}
                               </span>
                             </li>
@@ -159,16 +171,19 @@ export function MonthDetailModal({ month, onClose }: Props) {
                   {oneTime.map((r, i) => (
                     <li
                       key={i}
-                      className="flex items-center gap-3 px-3 py-2 border-b border-border/40 last:border-0 bg-surface-2/80 text-sm"
+                      className="flex items-start gap-3 px-3 py-2 border-b border-border/40 last:border-0 bg-surface-2/80 text-sm"
                     >
-                      <span className="flex-1 text-text-primary truncate">{r.item_name}</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-text-primary block truncate">{r.item_name}</span>
+                        <PaidNoteBlock text={r.paid_note} />
+                      </div>
                       {r.due_date && (
-                        <span className="text-xs text-text-muted shrink-0">
+                        <span className="text-xs text-text-muted shrink-0 pt-0.5">
                           {formatDate(r.due_date)}
                         </span>
                       )}
                       <PaidBadge isPaid={r.is_paid} />
-                      <span className="tabular-nums text-text-secondary shrink-0">
+                      <span className="tabular-nums text-text-secondary shrink-0 pt-0.5">
                         {formatBRL(r.amount)}
                       </span>
                     </li>

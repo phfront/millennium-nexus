@@ -63,7 +63,12 @@ export function useExpenses() {
         };
       }),
     );
-    setEntries((entData ?? []) as ExpenseEntry[]);
+    setEntries(
+      (entData ?? []).map((raw) => {
+        const e = raw as ExpenseEntry & { paid_note?: string | null };
+        return { ...e, paid_note: e.paid_note ?? null } as ExpenseEntry;
+      }),
+    );
     setIsLoading(false);
   }, [user]);
 
@@ -154,6 +159,7 @@ export function useExpenses() {
           amount: amt,
           is_paid: existing?.is_paid ?? false,
           paid_at: existing?.paid_at ?? null,
+          paid_note: existing?.paid_note ?? null,
         };
       });
       const { error } = await supabase.from('finance_expense_entries').upsert(rows, {
@@ -165,7 +171,7 @@ export function useExpenses() {
     [user?.id, fetchAll],
   );
 
-  async function togglePaid(itemId: string, month: string) {
+  async function togglePaid(itemId: string, month: string, paidNote?: string | null) {
     if (!user) return;
     const mk = normalizeMonthKey(month);
     const existing = entries.find(
@@ -179,6 +185,11 @@ export function useExpenses() {
         : 0;
     const newPaid = !(existing?.is_paid ?? false);
     const paidAt = newPaid ? getLocalDateStr(user?.profile?.timezone) : null;
+    const noteToStore = newPaid
+      ? paidNote !== undefined
+        ? (paidNote ?? '').trim() || null
+        : null
+      : null;
 
     const supabase = createClient();
     const { data, error } = await supabase
@@ -191,6 +202,7 @@ export function useExpenses() {
           amount: baseAmount,
           is_paid: newPaid,
           paid_at: paidAt,
+          paid_note: noteToStore,
         },
         { onConflict: 'user_id,item_id,month' },
       )

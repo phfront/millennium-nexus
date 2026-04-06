@@ -22,6 +22,7 @@ import {
 } from '@/lib/finance/finance';
 import { useFinanceSpreadsheetSettings } from '@/contexts/FinanceSpreadsheetSettingsContext';
 import { SpreadsheetColumnFillModal } from '@/components/finance/features/spreadsheet-column-fill-modal/SpreadsheetColumnFillModal';
+import { ExpensePaidNoteModal } from '@/components/finance/features/expense-paid-note-modal/ExpensePaidNoteModal';
 import type { ExpenseCategory, ExpenseItem } from '@/types/finance';
 
 const DATA_COL = 'w-[128px] min-w-[128px] max-w-[128px]';
@@ -156,6 +157,8 @@ export function ExpensesSheet() {
     isPaid: boolean;
   } | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
+  const [paidNoteTarget, setPaidNoteTarget] = useState<{ itemId: string; month: string } | null>(null);
+  const [paidNoteBusy, setPaidNoteBusy] = useState(false);
 
   const allMonths = buildSpreadsheetMonthList(
     entries.map((e) => e.month),
@@ -217,9 +220,9 @@ export function ExpensesSheet() {
     }
   }
 
-  async function handleTogglePaid(itemId: string, month: string) {
+  async function handleTogglePaid(itemId: string, month: string, paidNote?: string | null) {
     try {
-      await togglePaid(itemId, month);
+      await togglePaid(itemId, month, paidNote);
     } catch {
       toast.error('Erro ao atualizar status');
     }
@@ -247,10 +250,26 @@ export function ExpensesSheet() {
 
   async function applyCtxTogglePaid() {
     if (!ctxMenu) return;
+    if (ctxMenu.isPaid) {
+      try {
+        await handleTogglePaid(ctxMenu.itemId, ctxMenu.month);
+      } finally {
+        setCtxMenu(null);
+      }
+      return;
+    }
+    setPaidNoteTarget({ itemId: ctxMenu.itemId, month: ctxMenu.month });
+    setCtxMenu(null);
+  }
+
+  async function confirmPaidNote(note: string) {
+    if (!paidNoteTarget) return;
+    setPaidNoteBusy(true);
     try {
-      await handleTogglePaid(ctxMenu.itemId, ctxMenu.month);
+      await handleTogglePaid(paidNoteTarget.itemId, paidNoteTarget.month, note);
+      setPaidNoteTarget(null);
     } finally {
-      setCtxMenu(null);
+      setPaidNoteBusy(false);
     }
   }
 
@@ -586,6 +605,7 @@ export function ExpensesSheet() {
                               parseInput={parseBRLInput}
                               highlightVariant="success"
                               highlightActive={entry?.is_paid ?? false}
+                              className="rounded-md border border-border/40 bg-surface-3/25 px-1.5 py-1 text-xs leading-normal tabular-nums"
                             />
                           </div>
                         </td>
@@ -613,6 +633,13 @@ export function ExpensesSheet() {
             toast.error('Erro ao preencher coluna');
           }
         }}
+      />
+
+      <ExpensePaidNoteModal
+        isOpen={paidNoteTarget !== null}
+        onClose={() => setPaidNoteTarget(null)}
+        onConfirm={(note) => confirmPaidNote(note)}
+        submitting={paidNoteBusy}
       />
 
       {ctxMenu &&

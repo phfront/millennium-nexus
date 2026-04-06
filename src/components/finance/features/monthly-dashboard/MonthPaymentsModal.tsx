@@ -1,16 +1,23 @@
 'use client';
 
+import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { Modal, Button, useToast, InlineAmountCell } from '@phfront/millennium-ui';
 import { formatBRL, formatMonth, parseBRLInput } from '@/lib/finance/format';
 import { normalizeExpenseMonthKey } from '@/lib/finance/finance';
 import type { ExpenseCategory, ExpenseItem, OneTimeExpense } from '@/types/finance';
+import { ExpensePaidNoteModal } from '@/components/finance/features/expense-paid-note-modal/ExpensePaidNoteModal';
 
 type Row = {
   item: ExpenseItem;
   amount: number;
   isPaid: boolean;
+  paidNote: string | null;
 };
+
+type MarkPaidTarget =
+  | { kind: 'item'; itemId: string }
+  | { kind: 'one_time'; id: string };
 
 function PaidStatusLabel() {
   return (
@@ -27,14 +34,14 @@ export type MonthPaymentsModalProps = {
   month: string;
   categories: ExpenseCategory[];
   activeItems: ExpenseItem[];
-  getEntry: (itemId: string, month: string) => { is_paid?: boolean } | undefined;
+  getEntry: (itemId: string, month: string) => { is_paid?: boolean; paid_note?: string | null } | undefined;
   getEffectiveExpenseAmount: (itemId: string, month: string) => number;
   upsertEntry: (itemId: string, month: string, amount: number) => Promise<unknown>;
-  togglePaid: (itemId: string, month: string) => Promise<unknown>;
+  togglePaid: (itemId: string, month: string, paidNote?: string | null) => Promise<unknown>;
   /** Despesas pontuais do mês (já filtradas). */
   oneTimeForMonth: OneTimeExpense[];
   upsertOneTime: (id: string, name: string, month: string, amount: number) => Promise<unknown>;
-  toggleOneTimePaid: (id: string) => Promise<unknown>;
+  toggleOneTimePaid: (id: string, paidNote?: string | null) => Promise<unknown>;
   /** Chamado após alteração guardada (ex.: refetch do resumo mensal no dashboard). */
   onDataChanged?: () => void;
 };
@@ -56,14 +63,22 @@ export function MonthPaymentsModal({
 }: MonthPaymentsModalProps) {
   const { toast } = useToast();
   const monthKey = normalizeExpenseMonthKey(month);
+  const [markPaidTarget, setMarkPaidTarget] = useState<MarkPaidTarget | null>(null);
+  const [markPaidBusy, setMarkPaidBusy] = useState(false);
 
   const rows: Row[] = [];
   for (const item of activeItems) {
     if (!item.category_id) continue;
-    const amount = getEffectiveExpenseAmount(item.id, month);
-    if (amount <= 0) continue;
     const entry = getEntry(item.id, month);
-    rows.push({ item, amount, isPaid: Boolean(entry?.is_paid) });
+    const amount = getEffectiveExpenseAmount(item.id, month);
+    // Ocultar só zeros “implícitos” (sem linha no mês); com entrada explícita R$ 0,00 continua visível.
+    if (amount <= 0 && !entry) continue;
+    rows.push({
+      item,
+      amount,
+      isPaid: Boolean(entry?.is_paid),
+      paidNote: entry?.paid_note ?? null,
+    });
   }
   const byCat = new Map<string, Row[]>();
   for (const row of rows) {
@@ -94,7 +109,7 @@ export function MonthPaymentsModal({
     .filter((g) => g.rows.length > 0);
 
   const oneTimeRows = oneTimeForMonth
-    .filter((e) => Number(e.amount ?? 0) > 0)
+    .filter((e) => Number(e.amount ?? 0) >= 0)
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name, 'pt'));
 
@@ -113,13 +128,35 @@ export function MonthPaymentsModal({
     }
   }
 
-  async function handleTogglePaid(itemId: string) {
+  async function handleTogglePaid(itemId: string, paidNote?: string | null) {
     try {
-      await togglePaid(itemId, month);
+      await togglePaid(itemId, month, paidNote);
       onDataChanged?.();
     } catch {
       toast.error('Erro ao atualizar pagamento');
     }
+  }
+
+  async function confirmMarkPaid(note: string) {
+    if (!markPaidTarget) return;
+    setMarkPaidBusy(true);
+    try {
+      if (markPaidTarget.kind === 'item') {
+        await togglePaid(markPaidTarget.itemId, month, note);
+      } else {
+        await toggleOneTimePaid(markPaidTarget.id, note);
+      }
+      onDataChanged?.();
+      setMarkPaidTarget(null);
+    } catch {
+      toast.error('Erro ao atualizar pagamento');
+    } finally {
+      setMarkPaidBusy(false);
+    }
+  }
+
+  function requestMarkPaid(target: MarkPaidTarget) {
+    setMarkPaidTarget(target);
   }
 
   async function handleSaveOneTime(exp: OneTimeExpense, value: number) {
@@ -131,9 +168,9 @@ export function MonthPaymentsModal({
     }
   }
 
-  async function handleToggleOneTime(id: string) {
+  async function handleToggleOneTime(id: string, paidNote?: string | null) {
     try {
-      await toggleOneTimePaid(id);
+      await toggleOneTimePaid(id, paidNote);
       onDataChanged?.();
     } catch {
       toast.error('Erro ao atualizar pagamento');
@@ -170,9 +207,11 @@ export function MonthPaymentsModal({
                             key={item.id}
                             className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 sm:gap-4 items-center px-3 py-2.5 border-b border-border/40 last:border-b-0 bg-surface-2/80"
                           >
-                            <div className="flex flex-col gap-1 min-w-0">
-                              <span className="text-sm text-text-primary font-medium truncate">{item.name}</span>
-                              <div className="w-full max-w-44">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 min-w-0">
+                              <span className="text-sm text-text-primary font-medium truncate sm:min-w-0 sm:flex-1">
+                                {item.name}
+                              </span>
+                              <div className="w-full sm:w-[11rem] shrink-0">
                                 <InlineAmountCell
                                   value={amount}
                                   onSave={(v) => handleSave(item.id, v)}
@@ -180,6 +219,7 @@ export function MonthPaymentsModal({
                                   parseInput={parseBRLInput}
                                   highlightVariant="success"
                                   highlightActive={isPaid}
+                                  className="rounded-md border border-border/45 bg-surface-3/35 px-2 py-1.5 !text-sm leading-normal tabular-nums"
                                 />
                               </div>
                             </div>
@@ -189,7 +229,7 @@ export function MonthPaymentsModal({
                                 variant="primary"
                                 size="sm"
                                 className="self-stretch sm:self-end whitespace-nowrap"
-                                onClick={() => void handleTogglePaid(item.id)}
+                                onClick={() => requestMarkPaid({ kind: 'item', itemId: item.id })}
                               >
                                 Marcar como pago
                               </Button>
@@ -214,9 +254,11 @@ export function MonthPaymentsModal({
                               key={exp.id}
                               className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 sm:gap-4 items-center px-3 py-2.5 border-b border-border/40 last:border-b-0 bg-surface-2/80"
                             >
-                              <div className="flex flex-col gap-1 min-w-0">
-                                <span className="text-sm text-text-primary font-medium truncate">{exp.name}</span>
-                                <div className="w-full max-w-44">
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 min-w-0">
+                                <span className="text-sm text-text-primary font-medium truncate sm:min-w-0 sm:flex-1">
+                                  {exp.name}
+                                </span>
+                                <div className="w-full sm:w-[11rem] shrink-0">
                                   <InlineAmountCell
                                     value={amount}
                                     onSave={(v) => handleSaveOneTime(exp, v)}
@@ -224,6 +266,7 @@ export function MonthPaymentsModal({
                                     parseInput={parseBRLInput}
                                     highlightVariant="success"
                                     highlightActive={false}
+                                    className="rounded-md border border-border/45 bg-surface-3/35 px-2 py-1.5 !text-sm leading-normal tabular-nums"
                                   />
                                 </div>
                               </div>
@@ -233,7 +276,7 @@ export function MonthPaymentsModal({
                                   variant="primary"
                                   size="sm"
                                   className="self-stretch sm:self-end whitespace-nowrap"
-                                  onClick={() => void handleToggleOneTime(exp.id)}
+                                  onClick={() => requestMarkPaid({ kind: 'one_time', id: exp.id })}
                                 >
                                   Marcar como pago
                                 </Button>
@@ -262,14 +305,23 @@ export function MonthPaymentsModal({
                         {category.name}
                       </h4>
                       <ul className="flex flex-col gap-0 border border-border/60 rounded-lg overflow-hidden bg-surface-3/40">
-                        {catRows.map(({ item, amount, isPaid }) => (
+                        {catRows.map(({ item, amount, isPaid, paidNote }) => (
                           <li
                             key={item.id}
                             className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 sm:gap-4 items-center px-3 py-2.5 border-b border-border/40 last:border-b-0 bg-surface-2/80"
                           >
-                            <div className="flex flex-col gap-1 min-w-0">
-                              <span className="text-sm text-text-primary font-medium truncate">{item.name}</span>
-                              <div className="w-full max-w-44">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4 min-w-0">
+                              <div className="min-w-0 sm:flex-1">
+                                <span className="text-sm text-text-primary font-medium truncate block">
+                                  {item.name}
+                                </span>
+                                {paidNote ? (
+                                  <p className="text-[11px] text-text-muted mt-1 leading-snug line-clamp-4 whitespace-pre-wrap">
+                                    {paidNote}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <div className="w-full sm:w-[11rem] shrink-0">
                                 <InlineAmountCell
                                   value={amount}
                                   onSave={(v) => handleSave(item.id, v)}
@@ -277,6 +329,7 @@ export function MonthPaymentsModal({
                                   parseInput={parseBRLInput}
                                   highlightVariant="success"
                                   highlightActive={isPaid}
+                                  className="rounded-md border border-border/45 bg-surface-3/35 px-2 py-1.5 !text-sm leading-normal tabular-nums"
                                 />
                               </div>
                             </div>
@@ -305,14 +358,24 @@ export function MonthPaymentsModal({
                       <ul className="flex flex-col gap-0 border border-border/60 rounded-lg overflow-hidden bg-surface-3/40">
                         {oneTimePaid.map((exp) => {
                           const amount = Number(exp.amount ?? 0);
+                          const paidNote = exp.paid_note ?? null;
                           return (
                             <li
                               key={exp.id}
                               className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 sm:gap-4 items-center px-3 py-2.5 border-b border-border/40 last:border-b-0 bg-surface-2/80"
                             >
-                              <div className="flex flex-col gap-1 min-w-0">
-                                <span className="text-sm text-text-primary font-medium truncate">{exp.name}</span>
-                                <div className="w-full max-w-44">
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4 min-w-0">
+                                <div className="min-w-0 sm:flex-1">
+                                  <span className="text-sm text-text-primary font-medium truncate block">
+                                    {exp.name}
+                                  </span>
+                                  {paidNote ? (
+                                    <p className="text-[11px] text-text-muted mt-1 leading-snug line-clamp-4 whitespace-pre-wrap">
+                                      {paidNote}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <div className="w-full sm:w-[11rem] shrink-0">
                                   <InlineAmountCell
                                     value={amount}
                                     onSave={(v) => handleSaveOneTime(exp, v)}
@@ -320,6 +383,7 @@ export function MonthPaymentsModal({
                                     parseInput={parseBRLInput}
                                     highlightVariant="success"
                                     highlightActive
+                                    className="rounded-md border border-border/45 bg-surface-3/35 px-2 py-1.5 !text-sm leading-normal tabular-nums"
                                   />
                                 </div>
                               </div>
@@ -346,6 +410,12 @@ export function MonthPaymentsModal({
             </>
           )}
         </div>
+        <ExpensePaidNoteModal
+          isOpen={markPaidTarget !== null}
+          onClose={() => setMarkPaidTarget(null)}
+          onConfirm={(note) => confirmMarkPaid(note)}
+          submitting={markPaidBusy}
+        />
         <div className="flex justify-end pt-4 mt-3 border-t border-border">
           <Button variant="ghost" onClick={onClose}>
             Fechar

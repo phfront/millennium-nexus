@@ -22,10 +22,14 @@ export function useOneTime() {
       .eq('user_id', user.id)
       .order('month', { ascending: false });
     setExpenses(
-      (data ?? []).map((row) => ({
-        ...(row as OneTimeExpense),
-        due_date: (row as { due_date?: string | null }).due_date ?? null,
-      })),
+      (data ?? []).map((row) => {
+        const r = row as OneTimeExpense & { paid_note?: string | null };
+        return {
+          ...r,
+          due_date: r.due_date ?? null,
+          paid_note: r.paid_note ?? null,
+        };
+      }),
     );
     setIsLoading(false);
   }, [user]);
@@ -56,6 +60,7 @@ export function useOneTime() {
       const row = {
         ...(data as OneTimeExpense),
         due_date: (data as { due_date?: string | null }).due_date ?? null,
+        paid_note: (data as { paid_note?: string | null }).paid_note ?? null,
       };
       setExpenses((prev) => prev.map((e) => (e.id === id ? row : e)));
       return row;
@@ -75,33 +80,45 @@ export function useOneTime() {
       const row = {
         ...(data as OneTimeExpense),
         due_date: (data as { due_date?: string | null }).due_date ?? null,
+        paid_note: (data as { paid_note?: string | null }).paid_note ?? null,
       };
       setExpenses((prev) => [row, ...prev]);
       return row;
     }
   }
 
-  async function togglePaid(id: string) {
+  async function togglePaid(id: string, paidNote?: string | null) {
     if (!user) return;
     const existing = expenses.find((e) => e.id === id);
     if (!existing) return;
     const newPaid = !existing.is_paid;
     const paidAt = newPaid ? getLocalDateStr(user?.profile?.timezone) : null;
+    const noteToStore = newPaid
+      ? paidNote !== undefined
+        ? (paidNote ?? '').trim() || null
+        : null
+      : null;
 
     setExpenses((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, is_paid: newPaid, paid_at: paidAt } : e)),
+      prev.map((e) =>
+        e.id === id ? { ...e, is_paid: newPaid, paid_at: paidAt, paid_note: noteToStore } : e,
+      ),
     );
 
     const supabase = createClient();
     const { error } = await supabase
       .from('finance_one_time_expenses')
-      .update({ is_paid: newPaid, paid_at: paidAt })
+      .update({ is_paid: newPaid, paid_at: paidAt, paid_note: noteToStore })
       .eq('id', id)
       .eq('user_id', user.id);
 
     if (error) {
       setExpenses((prev) =>
-        prev.map((e) => (e.id === id ? { ...e, is_paid: !newPaid, paid_at: existing.paid_at } : e)),
+        prev.map((e) =>
+          e.id === id
+            ? { ...e, is_paid: !newPaid, paid_at: existing.paid_at, paid_note: existing.paid_note }
+            : e,
+        ),
       );
       throw new Error(error.message);
     }

@@ -8,6 +8,7 @@ import { useOneTime } from '@/hooks/finance/use-one-time';
 import { formatBRL, formatMonth, parseBRLInput } from '@/lib/finance/format';
 import { buildSpreadsheetMonthList, normalizeExpenseMonthKey, toMonthDate } from '@/lib/finance/finance';
 import { useFinanceSpreadsheetSettings } from '@/contexts/FinanceSpreadsheetSettingsContext';
+import { ExpensePaidNoteModal } from '@/components/finance/features/expense-paid-note-modal/ExpensePaidNoteModal';
 
 export function OneTimeSheet() {
   const { monthsForward } = useFinanceSpreadsheetSettings();
@@ -26,6 +27,8 @@ export function OneTimeSheet() {
     isPaid: boolean;
   } | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
+  const [paidNoteExpenseId, setPaidNoteExpenseId] = useState<string | null>(null);
+  const [paidNoteBusy, setPaidNoteBusy] = useState(false);
 
   const allMonths = buildSpreadsheetMonthList(
     expenses.map((e) => e.month),
@@ -83,9 +86,9 @@ export function OneTimeSheet() {
     }
   }
 
-  async function handleTogglePaidExpense(id: string) {
+  async function handleTogglePaidExpense(id: string, paidNote?: string | null) {
     try {
-      await togglePaid(id);
+      await togglePaid(id, paidNote);
     } catch {
       toast.error('Erro ao atualizar status');
     }
@@ -113,10 +116,26 @@ export function OneTimeSheet() {
 
   async function applyCtxTogglePaid() {
     if (!ctxMenu) return;
+    if (ctxMenu.isPaid) {
+      try {
+        await handleTogglePaidExpense(ctxMenu.expenseId);
+      } finally {
+        setCtxMenu(null);
+      }
+      return;
+    }
+    setPaidNoteExpenseId(ctxMenu.expenseId);
+    setCtxMenu(null);
+  }
+
+  async function confirmOneTimePaidNote(note: string) {
+    if (!paidNoteExpenseId) return;
+    setPaidNoteBusy(true);
     try {
-      await handleTogglePaidExpense(ctxMenu.expenseId);
+      await handleTogglePaidExpense(paidNoteExpenseId, note);
+      setPaidNoteExpenseId(null);
     } finally {
-      setCtxMenu(null);
+      setPaidNoteBusy(false);
     }
   }
 
@@ -247,6 +266,7 @@ export function OneTimeSheet() {
                             parseInput={parseBRLInput}
                             highlightVariant="success"
                             highlightActive={expense.is_paid}
+                            className="rounded-md border border-border/40 bg-surface-3/25 px-1.5 py-1 text-xs leading-normal tabular-nums"
                           />
                         </div>
                         <button
@@ -267,6 +287,13 @@ export function OneTimeSheet() {
           </table>
         </div>
       )}
+
+      <ExpensePaidNoteModal
+        isOpen={paidNoteExpenseId !== null}
+        onClose={() => setPaidNoteExpenseId(null)}
+        onConfirm={(note) => confirmOneTimePaidNote(note)}
+        submitting={paidNoteBusy}
+      />
 
       {ctxMenu &&
         typeof document !== 'undefined' &&
