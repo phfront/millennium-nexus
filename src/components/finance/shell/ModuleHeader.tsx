@@ -9,7 +9,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/finance': 'Finance',
   '/finance/income': 'Receitas',
   '/finance/expenses': 'Despesas',
-  '/finance/one-time': 'Pontuais',
+  '/finance/one-time': 'Lançamentos',
   '/finance/subscriptions': 'Assinaturas',
   '/finance/receivables': 'Cobranças',
   '/finance/settings': 'Configurações',

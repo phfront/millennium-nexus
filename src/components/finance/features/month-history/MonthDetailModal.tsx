@@ -34,6 +34,23 @@ function PaidBadge({ isPaid }: { isPaid: boolean | null }) {
   );
 }
 
+function OneTimePaidBadge({ isPaid, flow }: { isPaid: boolean | null; flow: 'expense' | 'income' }) {
+  if (isPaid === null) return null;
+  const done = flow === 'income' ? 'Recebido' : 'Pago';
+  const pending = flow === 'income' ? 'A receber' : 'Pendente';
+  return (
+    <span
+      className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
+        isPaid
+          ? 'bg-green-500/15 text-green-600'
+          : 'bg-surface-3 text-text-muted'
+      }`}
+    >
+      {isPaid ? done : pending}
+    </span>
+  );
+}
+
 function PaidNoteBlock({ text }: { text: string | null | undefined }) {
   const t = text?.trim();
   if (!t) return null;
@@ -52,7 +69,8 @@ export function MonthDetailModal({ month, onClose }: Props) {
     oneTime,
     totalIncome,
     totalExpenses,
-    totalOneTime,
+    totalOneTimeExpense,
+    totalOneTimeIncome,
     surplus,
     isLoading,
   } = useFinanceMonthDetail(month);
@@ -163,10 +181,10 @@ export function MonthDetailModal({ month, onClose }: Props) {
               </section>
             )}
 
-            {/* ── Pontuais ── */}
+            {/* ── Pontuais (despesas e receitas) ── */}
             {hasOneTime && (
               <section>
-                <SectionHeader label="Pontuais" />
+                <SectionHeader label="Lançamentos pontuais" />
                 <ul className="flex flex-col border border-border/60 rounded-lg overflow-hidden">
                   {oneTime.map((r, i) => (
                     <li
@@ -174,7 +192,18 @@ export function MonthDetailModal({ month, onClose }: Props) {
                       className="flex items-start gap-3 px-3 py-2 border-b border-border/40 last:border-0 bg-surface-2/80 text-sm"
                     >
                       <div className="flex-1 min-w-0">
-                        <span className="text-text-primary block truncate">{r.item_name}</span>
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="text-text-primary truncate">{r.item_name}</span>
+                          <span
+                            className={`text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded shrink-0 ${
+                              r.flow === 'income'
+                                ? 'bg-green-500/15 text-green-500'
+                                : 'bg-red-500/12 text-red-400'
+                            }`}
+                          >
+                            {r.flow === 'income' ? 'Receita' : 'Despesa'}
+                          </span>
+                        </span>
                         <PaidNoteBlock text={r.paid_note} />
                       </div>
                       {r.due_date && (
@@ -182,18 +211,34 @@ export function MonthDetailModal({ month, onClose }: Props) {
                           {formatDate(r.due_date)}
                         </span>
                       )}
-                      <PaidBadge isPaid={r.is_paid} />
-                      <span className="tabular-nums text-text-secondary shrink-0 pt-0.5">
+                      <OneTimePaidBadge isPaid={r.is_paid} flow={r.flow} />
+                      <span
+                        className={`tabular-nums font-medium shrink-0 pt-0.5 ${
+                          r.flow === 'income' ? 'text-green-500' : 'text-text-secondary'
+                        }`}
+                      >
                         {formatBRL(r.amount)}
                       </span>
                     </li>
                   ))}
                 </ul>
-                <div className="flex justify-between px-3 py-2 mt-1 rounded-lg bg-surface-3/50">
-                  <span className="text-sm font-semibold text-text-primary">Total pontuais</span>
-                  <span className="text-sm tabular-nums font-semibold text-red-500">
-                    {formatBRL(totalOneTime)}
-                  </span>
+                <div className="flex flex-col gap-1.5 px-3 py-2 mt-1 rounded-lg bg-surface-3/50">
+                  {totalOneTimeExpense > 0 && (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-sm text-text-secondary">Despesas pontuais</span>
+                      <span className="text-sm tabular-nums font-semibold text-red-500">
+                        {formatBRL(totalOneTimeExpense)}
+                      </span>
+                    </div>
+                  )}
+                  {totalOneTimeIncome > 0 && (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-sm text-text-secondary">Receitas pontuais</span>
+                      <span className="text-sm tabular-nums font-semibold text-green-500">
+                        {formatBRL(totalOneTimeIncome)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </section>
             )}

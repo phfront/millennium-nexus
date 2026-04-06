@@ -9,7 +9,10 @@ export default async function OneTimePage() {
 
   return (
     <div className="flex flex-col gap-6 max-w-full">
-      <PageHeader title="Despesas Pontuais" subtitle="Gastos não recorrentes por mês." />
+      <PageHeader
+        title="Lançamentos pontuais"
+        subtitle="Receitas ou despesas não recorrentes, organizadas por mês."
+      />
       <OneTimeSheet />
     </div>
   );

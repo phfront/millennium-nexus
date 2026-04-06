@@ -33,14 +33,16 @@ export function expenseEntriesForMonth(entries: ExpenseEntry[], month: string): 
 
 export function paymentProgress(
   expenseEntries: ExpenseEntry[],
-  oneTimeRows: { amount: number; is_paid: boolean }[] = [],
+  oneTimeRows: { amount: number; is_paid: boolean; flow?: 'expense' | 'income' }[] = [],
 ): {
   paid: number;
   total: number;
   percent: number;
 } {
   const fixed = expenseEntries.filter((e) => e.amount > 0);
-  const one = oneTimeRows.filter((e) => e.amount > 0);
+  const one = oneTimeRows.filter(
+    (e) => e.amount > 0 && (e.flow ?? 'expense') === 'expense',
+  );
   const total = fixed.length + one.length;
   const paid =
     fixed.filter((e) => e.is_paid).length + one.filter((e) => e.is_paid).length;

@@ -381,8 +381,8 @@ export function MonthlyDashboard() {
         upsertEntry={upsertEntry}
         togglePaid={togglePaid}
         oneTimeForMonth={oneTimeForMonth}
-        upsertOneTime={(id, name, monthKey, amount) =>
-          upsertOneTimeExpense(name, monthKey, amount, id)
+        upsertOneTime={(id, name, monthKey, amount, extra) =>
+          upsertOneTimeExpense(name, monthKey, amount, id, extra)
         }
         toggleOneTimePaid={toggleOneTimePaid}
         onDataChanged={() => {

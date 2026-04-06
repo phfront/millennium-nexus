@@ -273,10 +273,11 @@ async function sendFinanceExpenseReminders(
   }
 
   const { data: oneTimeRows } = await supabase
-    .from('finance_one_time_expenses')
-    .select('id, user_id, name, due_date, amount, is_paid')
+    .from('finance_one_time_entries')
+    .select('id, user_id, name, due_date, amount, is_paid, flow')
     .in('user_id', eligibleIds)
     .eq('is_paid', false)
+    .eq('flow', 'expense')
     .gt('amount', 0)
     .not('due_date', 'is', null);
 

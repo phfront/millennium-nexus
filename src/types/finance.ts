@@ -56,12 +56,15 @@ export type ExpenseEntry = {
   created_at: string;
 };
 
-export type OneTimeExpense = {
+/** Lançamento pontual: despesa ou receita não recorrente. */
+export type OneTimeEntry = {
   id: string;
   user_id: string;
   name: string;
   month: string; // 'YYYY-MM-DD'
   amount: number;
+  /** Despesa ou receita pontual. */
+  flow: 'expense' | 'income';
   /** Data de vencimento opcional (YYYY-MM-DD) para lembretes push. */
   due_date: string | null;
   is_paid: boolean;
@@ -69,6 +72,9 @@ export type OneTimeExpense = {
   paid_note: string | null;
   created_at: string;
 };
+
+/** @deprecated Use OneTimeEntry */
+export type OneTimeExpense = OneTimeEntry;
 
 export type Subscription = {
   id: string;
@@ -151,4 +157,6 @@ export type FinanceMonthSnapshotEntry = {
   sort_order: number;
   /** Nota opcional ao marcar despesa/pontual como pago. */
   paid_note: string | null;
+  /** Só quando entry_type = one_time: despesa ou receita pontual. */
+  one_time_flow: string | null;
 };

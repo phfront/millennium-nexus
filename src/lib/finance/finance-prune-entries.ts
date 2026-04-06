@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 const TABLES = [
   'finance_income_entries',
   'finance_expense_entries',
-  'finance_one_time_expenses',
+  'finance_one_time_entries',
 ] as const;
 
 /**

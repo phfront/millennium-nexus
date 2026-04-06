@@ -55,19 +55,21 @@ export type ExpenseEntry = {
   created_at: string;
 };
 
-export type OneTimeExpense = {
+export type OneTimeEntry = {
   id: string;
   user_id: string;
   name: string;
-  month: string; // 'YYYY-MM-DD'
+  month: string;
   amount: number;
-  /** Data de vencimento opcional (YYYY-MM-DD) para lembretes push. */
+  flow: 'expense' | 'income';
   due_date: string | null;
   is_paid: boolean;
   paid_at: string | null;
   paid_note: string | null;
   created_at: string;
 };
+
+export type OneTimeExpense = OneTimeEntry;
 
 export type Subscription = {
   id: string;
@@ -149,4 +151,5 @@ export type FinanceMonthSnapshotEntry = {
   due_date: string | null;
   sort_order: number;
   paid_note: string | null;
+  one_time_flow: string | null;
 };

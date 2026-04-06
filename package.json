@@ -10,7 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@phfront/millennium-ui": "latest",
+    "@phfront/millennium-ui": "file:../millennium-ui",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.4",
     "date-fns": "^4.1.0",
