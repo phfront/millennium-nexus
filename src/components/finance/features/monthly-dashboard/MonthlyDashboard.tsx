@@ -1,9 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { TrendingUp, Receipt, CreditCard, Wallet, ArrowRight, ListChecks } from 'lucide-react';
-import { Skeleton, Button, StatCard, MonthStepper, type StatCardValueTone } from '@phfront/millennium-ui';
+import {
+  TrendingUp,
+  Receipt,
+  CreditCard,
+  Wallet,
+  ArrowRight,
+  ListChecks,
+  CheckCircle2,
+  Unlock,
+} from 'lucide-react';
+import {
+  Skeleton,
+  Button,
+  StatCard,
+  MonthStepper,
+  Modal,
+  useToast,
+  type StatCardValueTone,
+} from '@phfront/millennium-ui';
 import { SurplusChart } from '@/components/finance/features/surplus-chart/SurplusChart';
 import { useMonthlySummary } from '@/hooks/finance/use-monthly-summary';
 import { useExpenses } from '@/hooks/finance/use-expenses';
@@ -20,10 +37,21 @@ import {
 import { MonthPaymentsModal } from '@/components/finance/features/monthly-dashboard/MonthPaymentsModal';
 import { useFinanceSpreadsheetSettings } from '@/contexts/FinanceSpreadsheetSettingsContext';
 import { formatBRL, formatMonthLabel } from '@/lib/finance/format';
+import { createClient } from '@/lib/supabase/client';
+import { useUserStore } from '@/store/user-store';
 
 export function MonthlyDashboard() {
+  const user = useUserStore((s) => s.user);
+  const { toast } = useToast();
   const [month, setMonth] = useState(() => toMonthDate(new Date()));
   const [paymentsModalOpen, setPaymentsModalOpen] = useState(false);
+  const [completeModalOpen, setCompleteModalOpen] = useState(false);
+  const [reopenModalOpen, setReopenModalOpen] = useState(false);
+  const [currentMonthConcluded, setCurrentMonthConcluded] = useState(false);
+  const [loadingConcluded, setLoadingConcluded] = useState(false);
+  const [concluding, setConcluding] = useState(false);
+  const [reopening, setReopening] = useState(false);
+
   const { maxPlanningMonth } = useFinanceSpreadsheetSettings();
   const {
     summaries,
@@ -70,17 +98,201 @@ export function MonthlyDashboard() {
   const accumulatedTone: StatCardValueTone =
     summary && summary.accumulated_surplus >= 0 ? 'positive' : 'negative';
 
+  const currentMonth = toMonthDate(new Date());
+  const isCurrentMonth = month === currentMonth;
+  const pendingPayments =
+    progress.total > 0 ? Math.max(0, progress.total - progress.paid) : 0;
+
+  const refreshMonthConcluded = useCallback(async () => {
+    if (!user?.id || !isCurrentMonth) {
+      setCurrentMonthConcluded(false);
+      return;
+    }
+    setLoadingConcluded(true);
+    try {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from('finance_month_snapshots')
+        .select('month')
+        .eq('user_id', user.id)
+        .eq('month', month)
+        .maybeSingle();
+      setCurrentMonthConcluded(!!data);
+    } finally {
+      setLoadingConcluded(false);
+    }
+  }, [user?.id, isCurrentMonth, month]);
+
+  useEffect(() => {
+    void refreshMonthConcluded();
+  }, [refreshMonthConcluded]);
+
+  async function handleConfirmCompleteMonth() {
+    setConcluding(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.rpc('finance_complete_finance_month', {
+        p_month: month,
+      });
+      if (error) {
+        toast.error(error.message ?? 'Não foi possível concluir o mês.');
+        return;
+      }
+      setCompleteModalOpen(false);
+      setCurrentMonthConcluded(true);
+      toast.success('Mês concluído. Totais e lançamentos foram arquivados.');
+    } finally {
+      setConcluding(false);
+    }
+  }
+
+  async function handleConfirmReopenMonth() {
+    setReopening(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.rpc('finance_reopen_month', {
+        p_month: month,
+      });
+      if (error) {
+        toast.error(error.message ?? 'Não foi possível reabrir o mês.');
+        return;
+      }
+      setReopenModalOpen(false);
+      setCurrentMonthConcluded(false);
+      toast.success('Mês reaberto. Podes voltar a editar receitas e despesas.');
+    } finally {
+      setReopening(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header com seletor de mês */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <MonthStepper
           label={formatMonthLabel(month)}
           onPrev={() => setMonth(getPreviousMonth(month))}
           onNext={() => setMonth(getNextMonth(month))}
           disableNext={month >= maxPlanningMonth}
         />
+        {isCurrentMonth && !loadingConcluded && !currentMonthConcluded && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setCompleteModalOpen(true)}
+            leftIcon={<CheckCircle2 size={14} />}
+            className="shrink-0 text-text-muted"
+          >
+            Concluir mês
+          </Button>
+        )}
       </div>
+
+      {isCurrentMonth && currentMonthConcluded && (
+        <div className="rounded-xl border border-border bg-surface-2 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-text-primary flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-green-500 shrink-0" />
+              Mês concluído
+            </p>
+            <p className="text-xs text-text-muted mt-1">
+              Os totais e lançamentos deste mês estão arquivados. Vê o detalhe em{' '}
+              <Link href="/finance/history" className="underline hover:text-text-primary">
+                Histórico
+              </Link>
+              .
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setReopenModalOpen(true)}
+            leftIcon={<Unlock size={14} />}
+            className="shrink-0 self-start sm:self-center"
+          >
+            Reabrir mês
+          </Button>
+        </div>
+      )}
+
+      <Modal
+        isOpen={completeModalOpen}
+        onClose={() => !concluding && setCompleteModalOpen(false)}
+        title="Concluir o mês?"
+        size="md"
+      >
+        <>
+          <div className="flex flex-col gap-3 text-sm text-text-secondary">
+            <p>
+              Vamos arquivar os totais e todos os lançamentos (receitas, despesas fixas e pontuais)
+              com os nomes e valores atuais. Depois podes reabrir o mês se precisares corrigir algo.
+            </p>
+            {pendingPayments > 0 && (
+              <div
+                className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-amber-800 dark:text-amber-200 text-xs leading-relaxed"
+                role="status"
+              >
+                <strong className="font-semibold">Atenção:</strong> ainda tens{' '}
+                <strong>{pendingPayments}</strong> de <strong>{progress.total}</strong> despesas com
+                valor neste mês por marcar como pagas. Podes concluir na mesma; o arquivo reflecte o
+                estado atual (pago ou pendente).
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 pt-5 mt-2 border-t border-border">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setCompleteModalOpen(false)}
+              disabled={concluding}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              isLoading={concluding}
+              onClick={() => void handleConfirmCompleteMonth()}
+            >
+              Concluir mês
+            </Button>
+          </div>
+        </>
+      </Modal>
+
+      <Modal
+        isOpen={reopenModalOpen}
+        onClose={() => !reopening && setReopenModalOpen(false)}
+        title="Reabrir o mês?"
+        size="md"
+      >
+        <>
+          <p className="text-sm text-text-secondary">
+            Isto remove o arquivo deste mês na tua conta. Voltas a poder editar receitas e despesas na
+            planilha; a linha deste mês deixa de aparecer no histórico até concluíres de novo.
+          </p>
+          <div className="flex justify-end gap-2 pt-5 mt-4 border-t border-border">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setReopenModalOpen(false)}
+              disabled={reopening}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              isLoading={reopening}
+              onClick={() => void handleConfirmReopenMonth()}
+            >
+              Reabrir mês
+            </Button>
+          </div>
+        </>
+      </Modal>
 
       {/* Cards de métricas */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -126,7 +338,9 @@ export function MonthlyDashboard() {
             {loadingPayments ? (
               <Skeleton className="h-4 w-24" />
             ) : (
-              <span className="text-xs text-text-muted">{progress.paid} de {progress.total} pagos</span>
+              <span className="text-xs text-text-muted">
+                {progress.paid} de {progress.total} pagos
+              </span>
             )}
             <Button
               type="button"
@@ -201,7 +415,10 @@ export function MonthlyDashboard() {
             {loadingSubs ? (
               <Skeleton className="h-5 w-20" />
             ) : (
-              <p className="text-base font-semibold text-text-primary">{formatBRL(subsTotal)}<span className="text-xs text-text-muted font-normal">/mês</span></p>
+              <p className="text-base font-semibold text-text-primary">
+                {formatBRL(subsTotal)}
+                <span className="text-xs text-text-muted font-normal">/mês</span>
+              </p>
             )}
           </div>
           <div className="flex items-center gap-1 text-text-muted">

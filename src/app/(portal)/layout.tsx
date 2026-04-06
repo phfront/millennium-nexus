@@ -38,7 +38,7 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <AppHeader />
 
-          <main className="pwa-main-safe-top pwa-scroll-main flex-1 overflow-y-auto p-4 md:p-6 pb-safe-bottom-nav md:pb-6">
+          <main className="pwa-main-safe-top pwa-scroll-main min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-safe-bottom-nav md:pb-6">
             {children}
           </main>
 

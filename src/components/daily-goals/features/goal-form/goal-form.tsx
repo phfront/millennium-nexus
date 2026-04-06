@@ -1,11 +1,70 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Input, Select, Switch, Alert } from '@phfront/millennium-ui';
-import { Plus, Trash2 } from 'lucide-react';
+import {
+  Alert,
+  Button,
+  DatePicker,
+  Input,
+  Select,
+  Switch,
+  Tooltip,
+} from '@phfront/millennium-ui';
+import { CircleHelp, Plus, Trash2 } from 'lucide-react';
 import type { Tracker, TrackerType, ScoringMode, ChecklistItem } from '@/types/daily-goals';
 import { WEEK_DAY_LABELS } from '@/lib/daily-goals/scheduling';
+
+function parseLocalDate(iso: string): Date | undefined {
+  const t = iso?.trim();
+  if (!t) return undefined;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  if (!m) return undefined;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return undefined;
+  return new Date(y, mo - 1, d);
+}
+
+function formatLocalDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function FieldLabelWithHelp({
+  htmlFor,
+  text,
+  tooltip,
+}: {
+  htmlFor?: string;
+  text: string;
+  tooltip: ReactNode;
+}) {
+  return (
+    <div className="mb-1.5 flex items-center gap-1.5">
+      {htmlFor ? (
+        <label htmlFor={htmlFor} className="text-sm font-medium text-text-primary">
+          {text}
+        </label>
+      ) : (
+        <span className="text-sm font-medium text-text-primary">{text}</span>
+      )}
+      <Tooltip
+        content={tooltip}
+        className="max-w-[min(92vw,280px)] whitespace-normal text-left leading-snug"
+        position="top"
+      >
+        <button
+          type="button"
+          className="rounded p-0.5 text-text-muted hover:text-brand-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary"
+          aria-label={`Ajuda: ${text}`}
+        >
+          <CircleHelp size={16} strokeWidth={1.75} aria-hidden />
+        </button>
+      </Tooltip>
+    </div>
+  );
+}
 
 type TrackerPayload = Omit<Tracker, 'id' | 'user_id' | 'created_at'>;
 
@@ -90,6 +149,8 @@ const SCORING_MODE_OPTIONS = [
 
 export function GoalForm({ initial, onSubmit }: GoalFormProps) {
   const router = useRouter();
+  const pointsInputId = useId();
+  const penaltyInputId = useId();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -161,6 +222,9 @@ export function GoalForm({ initial, onSubmit }: GoalFormProps) {
 
   const needsGoalValue = type === 'counter' || type === 'slider';
 
+  const startDateValue = useMemo(() => parseLocalDate(startDate), [startDate]);
+  const endDateValue = useMemo(() => parseLocalDate(endDate), [endDate]);
+
   function toggleDay(dow: number) {
     setRecurrenceDays((prev) => {
       if (prev === null) {
@@ -183,7 +247,7 @@ export function GoalForm({ initial, onSubmit }: GoalFormProps) {
     setError(null);
     try {
       await onSubmit(currentPayload);
-      router.push('/config');
+      router.push('/daily-goals/config');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar.');
     } finally {
@@ -313,10 +377,15 @@ export function GoalForm({ initial, onSubmit }: GoalFormProps) {
                 options={SCORING_MODE_OPTIONS}
                 onChange={(v) => setScoringMode(v as ScoringMode)}
               />
-              <div className="flex gap-3">
+              <div className="flex flex-col gap-4 sm:flex-row sm:gap-3">
                 <div className="flex-1">
+                  <FieldLabelWithHelp
+                    htmlFor={pointsInputId}
+                    text="Pontos"
+                    tooltip="Valores positivos funcionam como recompensa ao cumprir a meta; valores negativos aplicam penalidade."
+                  />
                   <Input
-                    label="Pontos (positivo = recompensa, negativo = penalidade)"
+                    id={pointsInputId}
                     type="number"
                     value={pointsValue}
                     onChange={(e) => setPointsValue(e.target.value)}
@@ -324,8 +393,13 @@ export function GoalForm({ initial, onSubmit }: GoalFormProps) {
                   />
                 </div>
                 <div className="flex-1">
+                  <FieldLabelWithHelp
+                    htmlFor={penaltyInputId}
+                    text="Penalidade"
+                    tooltip="Opcional: pontos quando a meta não é concluída no dia (ex.: -10)."
+                  />
                   <Input
-                    label="Penalidade por não conclusão (opcional)"
+                    id={penaltyInputId}
                     type="number"
                     value={pointsOnMiss}
                     onChange={(e) => setPointsOnMiss(e.target.value)}
@@ -380,29 +454,30 @@ export function GoalForm({ initial, onSubmit }: GoalFormProps) {
         </div>
 
         {/* Intervalo de datas */}
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <Input
+        <div className="flex flex-col gap-4 sm:flex-row sm:gap-3">
+          <div className="min-w-0 flex-1">
+            <DatePicker
               label="Data de início (opcional)"
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              value={startDateValue}
+              onChange={(d) => setStartDate(d ? formatLocalDate(d) : '')}
+              clearable
               helperText="Se vazio, a meta vale a partir do dia em que foi criada (não aparece em dias anteriores no histórico)."
             />
           </div>
-          <div className="flex-1">
-            <Input
+          <div className="min-w-0 flex-1">
+            <DatePicker
               label="Data de fim (opcional)"
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              value={endDateValue}
+              onChange={(d) => setEndDate(d ? formatLocalDate(d) : '')}
+              clearable
+              min={startDateValue}
             />
           </div>
         </div>
       </section>
 
       <div className="flex gap-3 pt-2">
-        <Button type="button" variant="ghost" onClick={() => router.push('/config')} className="flex-1">
+        <Button type="button" variant="ghost" onClick={() => router.push('/daily-goals/config')} className="flex-1">
           Cancelar
         </Button>
         {isDirty ? (

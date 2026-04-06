@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { Home } from 'lucide-react';
+import { ArrowLeft, Home } from 'lucide-react';
 import { Avatar } from '@phfront/millennium-ui';
 import { useCurrentUser } from '@/hooks/use-current-user';
 
@@ -12,22 +12,45 @@ const ROUTE_LABELS: Record<string, string> = {
   '/daily-goals/notifications': 'Notificações',
 };
 
+function resolveDailyGoalsTitle(pathname: string): string {
+  if (pathname === '/daily-goals/config/new') return 'Nova meta';
+  if (pathname.startsWith('/daily-goals/config/') && pathname !== '/daily-goals/config') {
+    return 'Editar meta';
+  }
+  return ROUTE_LABELS[pathname] ?? 'Daily Goals';
+}
+
+function isMetasEditorRoute(pathname: string): boolean {
+  if (pathname === '/daily-goals/config/new') return true;
+  return pathname.startsWith('/daily-goals/config/') && pathname !== '/daily-goals/config';
+}
+
 export function ModuleHeader() {
   const pathname = usePathname();
   const user = useCurrentUser();
   const profile = user?.profile ?? null;
-  const pageLabel = ROUTE_LABELS[pathname] ?? 'Daily Goals';
+  const pageLabel = resolveDailyGoalsTitle(pathname);
+  const backToMetas = isMetasEditorRoute(pathname);
 
   return (
     <header className="md:hidden flex items-center gap-1 px-3 h-14 pt-[env(safe-area-inset-top,0px)] bg-surface-2 border-b border-border shrink-0">
-      {/* <a> em vez de Link: com basePath /daily-goals, Link prefixa e href="/" não sai do módulo */}
-      <a
-        href="/"
-        aria-label="Voltar ao portal"
-        className="shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-3 transition-colors cursor-pointer inline-flex"
-      >
-        <Home size={22} strokeWidth={2} />
-      </a>
+      {backToMetas ? (
+        <a
+          href="/daily-goals/config"
+          aria-label="Voltar à lista de metas"
+          className="shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-3 transition-colors cursor-pointer inline-flex"
+        >
+          <ArrowLeft size={22} strokeWidth={2} />
+        </a>
+      ) : (
+        <a
+          href="/"
+          aria-label="Voltar ao portal"
+          className="shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-3 transition-colors cursor-pointer inline-flex"
+        >
+          <Home size={22} strokeWidth={2} />
+        </a>
+      )}
       <h1 className="flex-1 min-w-0 text-sm font-semibold text-text-primary text-center truncate px-1">
         {pageLabel}
       </h1>

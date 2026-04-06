@@ -25,18 +25,21 @@ export default async function AdminPage() {
   const [{ data: usersData }, { data: modulesData }, { data: denialsData }] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, full_name, email, is_admin')
+      .select('id, full_name, email, is_admin, avatar_url')
       .order('full_name', { ascending: true, nullsFirst: false }),
     supabase.from('modules').select('*').order('sort_order', { ascending: true }),
     supabase.from('user_module_denials').select('user_id, module_id'),
   ]);
 
-  const users = (usersData ?? []) as Pick<Profile, 'id' | 'full_name' | 'email' | 'is_admin'>[];
+  const users = (usersData ?? []) as Pick<
+    Profile,
+    'id' | 'full_name' | 'email' | 'is_admin' | 'avatar_url'
+  >[];
   const modules = (modulesData ?? []) as Module[];
   const deniedPairs = (denialsData ?? []) as { user_id: string; module_id: string }[];
 
   return (
-    <div className="space-y-6 max-w-[1200px] mx-auto animate-fade-in">
+    <div className="mx-auto w-full min-w-0 max-w-[1200px] space-y-6 animate-fade-in">
       <PageHeader
         className="mb-0"
         title="Administração"

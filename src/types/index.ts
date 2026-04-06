@@ -127,3 +127,23 @@ export type FinanceMonthSnapshot = {
   accumulated_surplus: number;
   snapshot_at: string;
 };
+
+/** Lançamento individual congelado no fecho do mês (nome/valor gravados no momento do arquivo). */
+export type FinanceMonthSnapshotEntry = {
+  id: string;
+  user_id: string;
+  month: string;
+  entry_type: 'income' | 'expense' | 'one_time';
+  /** null para receitas e pontuais */
+  category_name: string | null;
+  /** null para receitas e pontuais */
+  category_color: string | null;
+  /** Nome da fonte de renda / item de despesa / pontual congelado */
+  item_name: string;
+  amount: number;
+  /** null para receitas */
+  is_paid: boolean | null;
+  /** só para pontuais (YYYY-MM-DD) */
+  due_date: string | null;
+  sort_order: number;
+};

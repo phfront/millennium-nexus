@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Settings, ChevronDown, ChevronRight, Pencil, Check, Trash2, Columns2 } from 'lucide-react';
-import { Modal, Input, Button, Skeleton, useToast, InlineAmountCell } from '@phfront/millennium-ui';
+import {
+  Badge,
+  Button,
+  InlineAmountCell,
+  Input,
+  Modal,
+  Skeleton,
+  useToast,
+} from '@phfront/millennium-ui';
 import { useExpenses } from '@/hooks/finance/use-expenses';
 import { formatBRL, formatMonth, parseBRLInput } from '@/lib/finance/format';
 import {
@@ -34,6 +42,67 @@ function currentMonthInputValue(): string {
 
 const MONTH_INPUT_CLASS =
   'w-full px-3 py-2 rounded-lg bg-surface-3 border border-transparent text-sm text-text-primary outline-none ring-1 ring-inset ring-border focus:ring-brand-primary';
+
+function ManageExpenseItemRow({
+  item,
+  onEdit,
+}: {
+  item: ExpenseItem;
+  onEdit: (item: ExpenseItem) => void;
+}) {
+  return (
+    <li
+      className={`flex min-w-0 items-center gap-2 border-b border-border/70 px-2 py-2.5 last:border-b-0 hover:bg-surface-4/40 ${
+        !item.is_active ? 'opacity-80' : ''
+      }`}
+    >
+      <span className="min-w-0 flex-1 truncate text-sm text-text-primary">{item.name}</span>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+        {!item.is_active && (
+          <Badge variant="muted" size="sm">
+            Inativa
+          </Badge>
+        )}
+        {item.is_recurring && (
+          <Badge variant="success" size="sm">
+            Rec.
+          </Badge>
+        )}
+        <button
+          type="button"
+          onClick={() => onEdit(item)}
+          className="rounded-md p-1.5 text-text-secondary transition-colors hover:bg-surface-3 hover:text-text-primary"
+          title="Editar item"
+          aria-label={`Editar ${item.name}`}
+        >
+          <Pencil size={14} strokeWidth={2} />
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function ManageExpenseItemList({
+  itemsList,
+  onEditItem,
+}: {
+  itemsList: ExpenseItem[];
+  onEditItem: (item: ExpenseItem) => void;
+}) {
+  if (itemsList.length === 0) {
+    return <p className="px-1 py-2 text-xs text-text-muted">Nenhum item nesta categoria.</p>;
+  }
+  return (
+    <ul
+      className="mt-1.5 overflow-hidden rounded-lg border border-border/80 bg-surface-2/80"
+      aria-label="Itens da categoria"
+    >
+      {itemsList.map((item) => (
+        <ManageExpenseItemRow key={item.id} item={item} onEdit={onEditItem} />
+      ))}
+    </ul>
+  );
+}
 
 export function ExpensesSheet() {
   const { monthsForward } = useFinanceSpreadsheetSettings();
@@ -592,15 +661,21 @@ export function ExpensesSheet() {
         {manageStep === 'list' ? (
           <div className="flex flex-col gap-5">
             <div>
-              <p className="text-xs font-semibold text-text-muted uppercase mb-2">Nova categoria</p>
-              <div className="flex gap-2">
+              <p className="mb-2 text-xs font-semibold uppercase text-text-muted">Nova categoria</p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
                 <Input
+                  className="min-w-0 flex-1"
                   placeholder="Nome da categoria"
                   value={newCatName}
                   onChange={(e) => setNewCatName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
                 />
-                <Button onClick={handleAddCategory} disabled={saving} leftIcon={<Plus size={14} />}>
+                <Button
+                  className="shrink-0 sm:w-auto"
+                  onClick={handleAddCategory}
+                  disabled={saving}
+                  leftIcon={<Plus size={14} />}
+                >
                   Criar
                 </Button>
               </div>
@@ -612,10 +687,13 @@ export function ExpensesSheet() {
                   Novo
                 </Button>
               </div>
-              <div className="flex flex-col gap-2 max-h-[min(22rem,55vh)] overflow-y-auto pr-1">
+              <div className="flex max-h-[min(22rem,55vh)] flex-col gap-3 overflow-y-auto pr-1">
                 {categories.map((cat) => (
-                  <div key={cat.id} className="bg-surface-3 rounded-lg p-2">
-                    <div className="flex items-start justify-between gap-2 mb-1 min-w-0">
+                  <div
+                    key={cat.id}
+                    className="rounded-xl border border-border bg-surface-3 p-3 shadow-sm"
+                  >
+                    <div className="mb-2 flex min-w-0 items-start justify-between gap-2 border-b border-border/60 pb-2">
                       {editingCategoryId === cat.id ? (
                         <div className="flex flex-1 flex-wrap items-center gap-1 min-w-0">
                           <Input
@@ -638,7 +716,7 @@ export function ExpensesSheet() {
                         </div>
                       ) : (
                         <>
-                          <p className="text-xs font-semibold text-text-secondary truncate min-w-0 flex-1">
+                          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary">
                             {cat.name}
                           </p>
                           <div className="flex shrink-0 items-center gap-0.5">
@@ -668,69 +746,19 @@ export function ExpensesSheet() {
                         </>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-1">
-                      {items
-                        .filter((i) => i.category_id === cat.id)
-                        .map((item) => (
-                          <span
-                            key={item.id}
-                            className={`text-xs px-2 py-0.5 rounded-full bg-surface-4 text-text-muted inline-flex items-center gap-1 ${
-                              !item.is_active ? 'opacity-50' : ''
-                            }`}
-                          >
-                            {item.name}
-                            {!item.is_active && (
-                              <span className="text-[9px] uppercase text-text-muted">inativa</span>
-                            )}
-                            {item.is_recurring && (
-                              <span className="text-[9px] uppercase text-brand-primary font-semibold">rec.</span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => beginEditItem(item)}
-                              className="ml-0.5 p-0.5 rounded hover:bg-surface-3 text-text-secondary hover:text-text-primary"
-                              title="Editar"
-                              aria-label={`Editar ${item.name}`}
-                            >
-                              <Pencil size={12} />
-                            </button>
-                          </span>
-                        ))}
-                    </div>
+                    <ManageExpenseItemList
+                      itemsList={items.filter((i) => i.category_id === cat.id)}
+                      onEditItem={beginEditItem}
+                    />
                   </div>
                 ))}
                 {items.some((i) => !i.category_id) && (
-                  <div className="rounded-lg border border-dashed border-border bg-surface-3/50 p-2">
-                    <p className="text-xs font-semibold text-text-muted mb-1">Sem categoria</p>
-                    <div className="flex flex-wrap gap-1">
-                      {items
-                        .filter((i) => !i.category_id)
-                        .map((item) => (
-                          <span
-                            key={item.id}
-                            className={`text-xs px-2 py-0.5 rounded-full bg-surface-4 text-text-muted inline-flex items-center gap-1 ${
-                              !item.is_active ? 'opacity-50' : ''
-                            }`}
-                          >
-                            {item.name}
-                            {!item.is_active && (
-                              <span className="text-[9px] uppercase text-text-muted">inativa</span>
-                            )}
-                            {item.is_recurring && (
-                              <span className="text-[9px] uppercase text-brand-primary font-semibold">rec.</span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => beginEditItem(item)}
-                              className="ml-0.5 p-0.5 rounded hover:bg-surface-3 text-text-secondary hover:text-text-primary"
-                              title="Editar"
-                              aria-label={`Editar ${item.name}`}
-                            >
-                              <Pencil size={12} />
-                            </button>
-                          </span>
-                        ))}
-                    </div>
+                  <div className="rounded-xl border border-dashed border-border bg-surface-3/40 p-3">
+                    <p className="mb-2 text-sm font-semibold text-text-secondary">Sem categoria</p>
+                    <ManageExpenseItemList
+                      itemsList={items.filter((i) => !i.category_id)}
+                      onEditItem={beginEditItem}
+                    />
                   </div>
                 )}
               </div>

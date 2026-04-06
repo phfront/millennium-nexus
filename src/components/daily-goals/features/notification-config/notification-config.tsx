@@ -198,8 +198,8 @@ export function NotificationConfig({ tracker }: NotificationConfigProps) {
           )}
 
           {notification.type === 'interval' && (
-            <div className="flex gap-3">
-              <div className="flex flex-col gap-1 flex-1">
+            <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:gap-3">
+              <div className="flex min-w-0 w-full flex-col gap-1 sm:w-auto sm:max-w-30 sm:shrink-0">
                 <label className="text-xs font-medium text-text-secondary">A cada (min)</label>
                 <input
                   type="number"
@@ -208,31 +208,36 @@ export function NotificationConfig({ tracker }: NotificationConfigProps) {
                   onChange={(e) =>
                     setNotification((prev) => ({ ...prev, frequency_minutes: Number(e.target.value) }))
                   }
-                  className="px-3 py-2 rounded-lg bg-surface-3 border border-border text-text-primary text-sm focus:outline-none focus:border-brand-primary"
+                  className="min-w-0 w-full rounded-lg border border-border bg-surface-3 px-3 py-2 text-sm text-text-primary focus:border-brand-primary focus:outline-none"
                 />
               </div>
-              <TimePicker
-                value={notification.window_start ?? '08:00'}
-                label="Das"
-                clearable={false}
-                onChange={(v) =>
-                  setNotification((prev) => ({ ...prev, window_start: v ?? prev.window_start ?? '08:00' }))
-                }
-              />
-              <TimePicker
-                value={notification.window_end ?? '22:00'}
-                label="Até"
-                clearable={false}
-                onChange={(v) =>
-                  setNotification((prev) => ({ ...prev, window_end: v ?? prev.window_end ?? '22:00' }))
-                }
-              />
+              <div className="grid min-w-0 w-full grid-cols-2 gap-3 sm:flex sm:min-w-0 sm:flex-1">
+                <TimePicker
+                  className="min-w-0 w-full"
+                  value={notification.window_start ?? '08:00'}
+                  label="Das"
+                  clearable={false}
+                  onChange={(v) =>
+                    setNotification((prev) => ({ ...prev, window_start: v ?? prev.window_start ?? '08:00' }))
+                  }
+                />
+                <TimePicker
+                  className="min-w-0 w-full"
+                  value={notification.window_end ?? '22:00'}
+                  label="Até"
+                  clearable={false}
+                  onChange={(v) =>
+                    setNotification((prev) => ({ ...prev, window_end: v ?? prev.window_end ?? '22:00' }))
+                  }
+                />
+              </div>
             </div>
           )}
 
           {notification.type === 'reminder' && (
-            <div className="flex gap-3">
+            <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:gap-3">
               <TimePicker
+                className="min-w-0 w-full sm:flex-1"
                 value={notification.target_time ?? '20:00'}
                 label="Horário alvo"
                 clearable={false}
@@ -240,7 +245,7 @@ export function NotificationConfig({ tracker }: NotificationConfigProps) {
                   setNotification((prev) => ({ ...prev, target_time: v ?? prev.target_time ?? '20:00' }))
                 }
               />
-              <div className="flex flex-col gap-1 flex-1">
+              <div className="flex min-w-0 w-full flex-col gap-1 sm:flex-1">
                 <label className="text-xs font-medium text-text-secondary">Antecedência (min)</label>
                 <input
                   type="number"
@@ -249,7 +254,7 @@ export function NotificationConfig({ tracker }: NotificationConfigProps) {
                   onChange={(e) =>
                     setNotification((prev) => ({ ...prev, lead_time: Number(e.target.value) }))
                   }
-                  className="px-3 py-2 rounded-lg bg-surface-3 border border-border text-text-primary text-sm focus:outline-none focus:border-brand-primary"
+                  className="min-w-0 w-full rounded-lg border border-border bg-surface-3 px-3 py-2 text-sm text-text-primary focus:border-brand-primary focus:outline-none"
                 />
               </div>
             </div>

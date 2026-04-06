@@ -2,14 +2,13 @@
 
 import { usePathname } from 'next/navigation';
 import { BottomNav } from '@phfront/millennium-ui';
-import { LayoutDashboard, TrendingUp, CreditCard, Wallet, Users } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, CreditCard, History } from 'lucide-react';
 
 const NAV_ITEMS = [
   { href: '/finance', icon: <LayoutDashboard size={20} />, label: 'Início' },
   { href: '/finance/income', icon: <TrendingUp size={20} />, label: 'Receitas' },
   { href: '/finance/expenses', icon: <CreditCard size={20} />, label: 'Despesas' },
-  { href: '/finance/subscriptions', icon: <Wallet size={20} />, label: 'Assinaturas' },
-  { href: '/finance/receivables', icon: <Users size={20} />, label: 'Cobranças' },
+  { href: '/finance/history', icon: <History size={20} />, label: 'Histórico' },
 ];
 
 export function ModuleBottomNav() {
