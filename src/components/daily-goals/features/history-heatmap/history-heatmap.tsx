@@ -6,6 +6,7 @@ import { useUserStore } from '@/store/user-store';
 import { CalendarHeatmap, Skeleton } from '@phfront/millennium-ui';
 import { isTrackerScheduledForDate } from '@/lib/daily-goals/scheduling';
 import { maxPossiblePointsForTracker } from '@/lib/daily-goals/scoring';
+import { getGoalValuesForDate } from '@/lib/daily-goals/goal-history';
 import type { DayCompletionData, Log, Tracker } from '@/types/daily-goals';
 
 interface HistoryHeatmapProps {
@@ -57,6 +58,11 @@ export function HistoryHeatmap({ selectedDate, onSelectDate, refreshKey }: Histo
       const startDate = `${y}-${monthNum}-01`;
       const endDate = `${y}-${monthNum}-${String(daysInMonth).padStart(2, '0')}`;
 
+      // Gera todas as datas do mês primeiro
+      const allDates = Array.from({ length: daysInMonth }, (_, i) =>
+        `${y}-${monthNum}-${String(i + 1).padStart(2, '0')}`,
+      );
+
       // Uma única query para todos os logs do mês
       const { data: logsData } =
         trackerIds.length > 0
@@ -70,6 +76,14 @@ export function HistoryHeatmap({ selectedDate, onSelectDate, refreshKey }: Histo
 
       const allLogs = (logsData ?? []) as Log[];
 
+      // Busca os valores de meta históricos para cada dia do mês
+      const goalValuesByDate = new Map<string, Map<string, number | null>>();
+      const datePromises = allDates.map(async (dateStr) => {
+        const values = await getGoalValuesForDate(trackerIds, dateStr);
+        goalValuesByDate.set(dateStr, values);
+      });
+      await Promise.all(datePromises);
+
       // Agrupa por data
       const logsByDate = new Map<string, Log[]>();
       for (const log of allLogs) {
@@ -77,10 +91,6 @@ export function HistoryHeatmap({ selectedDate, onSelectDate, refreshKey }: Histo
         if (!logsByDate.has(d)) logsByDate.set(d, []);
         logsByDate.get(d)!.push(log);
       }
-
-      const allDates = Array.from({ length: daysInMonth }, (_, i) =>
-        `${y}-${monthNum}-${String(i + 1).padStart(2, '0')}`,
-      );
 
       const result: DayCompletionData[] = allDates.map((dateStr) => {
         const ts = trackers.filter((t) =>
@@ -95,13 +105,19 @@ export function HistoryHeatmap({ selectedDate, onSelectDate, refreshKey }: Histo
         const logByTracker = new Map(logsForDay.map((l) => [l.tracker_id, l]));
 
         let completed = 0;
+        const goalValuesForDate = goalValuesByDate.get(dateStr) ?? new Map();
         for (const t of ts) {
           const log = logByTracker.get(t.id);
           if (!log) continue;
           let done = false;
+          // Usa o valor histórico da meta ou o valor atual do tracker
+          const historicalGoalValue = goalValuesForDate.get(t.id);
+          const effectiveGoalValue = historicalGoalValue !== null && historicalGoalValue !== undefined
+            ? historicalGoalValue
+            : t.goal_value;
           if (t.type === 'boolean') done = log.value === 1;
           else if (t.type === 'counter' || t.type === 'slider')
-            done = (log.value ?? 0) >= (t.goal_value ?? 0);
+            done = (log.value ?? 0) >= (effectiveGoalValue ?? 0);
           else if (t.type === 'checklist') done = (log.checked_items ?? []).every(Boolean);
           if (done) completed++;
         }

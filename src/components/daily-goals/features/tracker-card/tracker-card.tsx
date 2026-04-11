@@ -10,7 +10,8 @@ import {
   Checklist,
   CompletionToggle,
 } from '@phfront/millennium-ui';
-import { formatScore, getScoreColor, maxPossiblePointsForTracker } from '@/lib/daily-goals/scoring';
+import { formatScore, getScoreColor, maxPossiblePointsForTracker, calculatePoints } from '@/lib/daily-goals/scoring';
+import { getGoalValueForDate } from '@/lib/daily-goals/goal-history';
 import type { Tracker, Log } from '@/types/daily-goals';
 
 const NUMERIC_LOG_DEBOUNCE_MS = 500;
@@ -20,13 +21,28 @@ interface TrackerCardProps {
   log: Log | null;
   readonly?: boolean;
   isSaving?: boolean;
+  viewDate?: string;  // Data para buscar goal_value histórico (quando readonly)
   onLogChange: (tracker: Tracker, partial: Partial<Log>) => void;
 }
 
-export function TrackerCard({ tracker, log, readonly = false, isSaving = false, onLogChange }: TrackerCardProps) {
+export function TrackerCard({ tracker, log, readonly = false, isSaving = false, viewDate, onLogChange }: TrackerCardProps) {
   const isReadonly = readonly;
   const isNumericType = tracker.type === 'counter' || tracker.type === 'slider';
   const serverValue = log?.value ?? 0;
+  
+  // Busca goal_value histórico quando readonly e viewDate está definida
+  const [historicalGoalValue, setHistoricalGoalValue] = useState<number | null>(null);
+  const effectiveGoalValue = historicalGoalValue !== null ? historicalGoalValue : tracker.goal_value;
+  
+  useEffect(() => {
+    if (readonly && viewDate && (tracker.type === 'counter' || tracker.type === 'slider')) {
+      getGoalValueForDate(tracker.id, viewDate).then((value) => {
+        if (value !== null) {
+          setHistoricalGoalValue(value);
+        }
+      });
+    }
+  }, [readonly, viewDate, tracker.id, tracker.type]);
 
   const [draftValue, setDraftValue] = useState<number | null>(null);
   const displayNumericValue = draftValue !== null ? draftValue : serverValue;
@@ -128,7 +144,7 @@ export function TrackerCard({ tracker, log, readonly = false, isSaving = false, 
         {tracker.type === 'counter' && (
           <HoldStepper
             value={displayNumericValue}
-            max={tracker.goal_value}
+            max={effectiveGoalValue}
             unit={tracker.unit}
             disabled={isReadonly}
             onChange={handleNumericChange}
@@ -137,7 +153,7 @@ export function TrackerCard({ tracker, log, readonly = false, isSaving = false, 
         {tracker.type === 'slider' && (
           <IntegerSlider
             value={displayNumericValue}
-            max={tracker.goal_value ?? 100}
+            max={effectiveGoalValue ?? 100}
             unit={tracker.unit}
             disabled={isReadonly}
             onChange={handleNumericChange}
@@ -165,7 +181,10 @@ export function TrackerCard({ tracker, log, readonly = false, isSaving = false, 
         <div className="flex items-center justify-between pt-2 border-t border-border">
           <span className="text-xs text-text-muted">Pontuação</span>
           <span className={`text-xs font-semibold tabular-nums ${getScoreColor(log?.points_earned ?? 0)}`}>
-            {log ? formatScore(log.points_earned) : `Vale ${formatScore(maxPossiblePointsForTracker(tracker))}`}
+            {log ? formatScore(log.points_earned) : readonly && viewDate 
+              ? formatScore(calculatePoints({ ...tracker, goal_value: effectiveGoalValue }, {}, effectiveGoalValue))
+              : `Vale ${formatScore(maxPossiblePointsForTracker(tracker))}`
+            }
           </span>
         </div>
       )}

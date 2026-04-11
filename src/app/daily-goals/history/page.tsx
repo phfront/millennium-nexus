@@ -90,6 +90,7 @@ export default function HistoryPage() {
                 tracker={tracker}
                 log={getLogForTracker(tracker.id)}
                 readonly={isPast}
+                viewDate={viewDate}
                 onLogChange={handleLogChange}
               />
             ))}

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import { Skeleton } from '@phfront/millennium-ui';
@@ -11,13 +12,29 @@ import { useUserStore } from '@/store/user-store';
 import { useDailyGoalsStore } from '@/store/use-daily-goals-store';
 import { isTrackerScheduledForDate } from '@/lib/daily-goals/scheduling';
 import { maxPossiblePointsForTracker } from '@/lib/daily-goals/scoring';
+import { getGoalValuesForDate } from '@/lib/daily-goals/goal-history';
+import { getLocalDateStr } from '@/lib/daily-goals/timezone';
 import type { Log } from '@/types/daily-goals';
 
 export default function DashboardPage() {
   const user = useUserStore((s) => s.user);
   const selectedDate = useDailyGoalsStore((s) => s.selectedDate);
+  const today = getLocalDateStr(user?.profile?.timezone);
   const { trackers: allTrackers, isLoading } = useTrackers(true);
   const { getLogForTracker, upsertLog, savingTrackerId } = useLogs(selectedDate);
+
+  // Busca valores históricos de meta quando visualizando data diferente
+  const [historicalGoals, setHistoricalGoals] = useState<Map<string, number | null>>(new Map());
+  const isViewingPast = selectedDate !== today;
+
+  useEffect(() => {
+    if (isViewingPast) {
+      const trackerIds = allTrackers.map(t => t.id);
+      getGoalValuesForDate(trackerIds, selectedDate).then(setHistoricalGoals);
+    } else {
+      setHistoricalGoals(new Map());
+    }
+  }, [isViewingPast, selectedDate, allTrackers]);
 
   // Filtra apenas trackers agendados para o dia selecionado
   const trackers = allTrackers.filter((t) =>
@@ -27,8 +44,10 @@ export default function DashboardPage() {
   const completed = trackers.filter((t) => {
     const log = getLogForTracker(t.id);
     if (!log) return false;
+    // Usa goal_value histórico se disponível
+    const effectiveGoalValue = historicalGoals.get(t.id) ?? t.goal_value;
     if (t.type === 'boolean') return log.value === 1;
-    if (t.type === 'counter' || t.type === 'slider') return (log.value ?? 0) >= (t.goal_value ?? 0);
+    if (t.type === 'counter' || t.type === 'slider') return (log.value ?? 0) >= (effectiveGoalValue ?? 0);
     if (t.type === 'checklist') return (log.checked_items ?? []).every(Boolean);
     return false;
   }).length;
@@ -83,6 +102,8 @@ export default function DashboardPage() {
               tracker={tracker}
               log={getLogForTracker(tracker.id)}
               isSaving={savingTrackerId === tracker.id}
+              readonly={isViewingPast}
+              viewDate={isViewingPast ? selectedDate : undefined}
               onLogChange={handleLogChange}
             />
           ))}

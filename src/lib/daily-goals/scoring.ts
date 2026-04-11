@@ -37,7 +37,14 @@ export function pointsPercentOfMax(earned: number, maxPossible: number): number 
   return Math.min(100, Math.round((earned / maxPossible) * 100));
 }
 
-export function calculatePoints(tracker: Tracker, log: Partial<Log>): number {
+export function calculatePoints(
+  tracker: Tracker,
+  log: Partial<Log>,
+  goalValue?: number | null
+): number {
+  // Usa o goalValue passado ou o do tracker
+  const effectiveGoalValue = goalValue !== undefined ? goalValue : tracker.goal_value;
+
   // Checklist: pontuação sempre baseada nos pontos individuais por item
   if (tracker.type === 'checklist') {
     const items = tracker.checklist_items ?? [];
@@ -57,7 +64,7 @@ export function calculatePoints(tracker: Tracker, log: Partial<Log>): number {
     case 'slider': {
       const value = log.value ?? 0;
       if (tracker.scoring_mode === 'completion') {
-        return value >= (tracker.goal_value ?? 0) ? Number(tracker.points_value ?? 0) : 0;
+        return value >= (effectiveGoalValue ?? 0) ? Number(tracker.points_value ?? 0) : 0;
       }
       return value * Number(tracker.points_value ?? 0);
     }
