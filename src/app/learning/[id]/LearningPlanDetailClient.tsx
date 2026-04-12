@@ -89,8 +89,8 @@ export function LearningPlanDetailClient({ plan }: Props) {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {/* Header */}
-      <div className="flex justify-between items-start">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start">
+        <div className="min-w-0">
           <h1 className="text-3xl font-bold tracking-tight text-text-primary mb-2">
             {plan.title}
           </h1>
@@ -102,12 +102,12 @@ export function LearningPlanDetailClient({ plan }: Props) {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {plan.status === 'in_progress' && (
-            <Button variant="outline" onClick={() => setShowNotifModal(true)}>
+            <Button variant="outline" size="sm" onClick={() => setShowNotifModal(true)}>
               <Bell className="w-4 h-4 mr-2" /> Notificações
             </Button>
           )}
           <Link href={`/learning/${plan.id}/edit`}>
-            <Button variant="outline">
+            <Button variant="outline" size="sm">
               <Target className="w-4 h-4 mr-2" /> Gerenciar Plano
             </Button>
           </Link>

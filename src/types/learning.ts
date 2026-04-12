@@ -51,6 +51,7 @@ export interface LearningDayItem {
   item_type: LearningItemType | null;
   is_completed: boolean;
   order_index: number;
+  user_notes: string | null;
   created_at: string;
 }
 

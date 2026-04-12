@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, Button, Textarea, Checkbox } from '@phfront/millennium-ui';
-import { toggleDayItem, updateDayNotes, completeDay } from '@/app/learning/actions';
+import { Card, Button, Checkbox, useToast } from '@phfront/millennium-ui';
+import { toggleDayItem, updateDayNotes, updateItemNotes, completeDay } from '@/app/learning/actions';
 import { CheckCircle2, Circle } from 'lucide-react';
 import type { LearningPlanDayWithItems, LearningDayItem } from '@/types/learning';
 import dynamic from 'next/dynamic';
@@ -30,6 +30,7 @@ export function DayExecutionClient({ day, planId }: { day: LearningPlanDayWithIt
   const [notes, setNotes] = useState(day.user_notes || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isCompleted, setIsCompleted] = useState(day.is_completed);
+  const { toast } = useToast();
 
   const handleToggleItem = async (itemId: string, currentStatus: boolean) => {
     // Optimistic update
@@ -43,12 +44,22 @@ export function DayExecutionClient({ day, planId }: { day: LearningPlanDayWithIt
     }
   };
 
-  const handleSaveNotes = async () => {
+  const handleSaveNotes = async (value: string) => {
+    setNotes(value);
     setIsSaving(true);
     try {
-      await updateDayNotes(day.id, notes);
+      await updateDayNotes(day.id, value);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSaveItemNotes = async (itemId: string, value: string) => {
+    setItems(items.map(i => i.id === itemId ? { ...i, user_notes: value } : i));
+    try {
+      await updateItemNotes(itemId, value);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -96,8 +107,8 @@ export function DayExecutionClient({ day, planId }: { day: LearningPlanDayWithIt
           </h3>
           <Card className="divide-y divide-border overflow-hidden">
             {items.map((item) => (
-              <div key={item.id} className="p-4 hover:bg-surface-2 transition-colors group border-b border-border last:border-0 cursor-pointer" onClick={() => handleToggleItem(item.id, item.is_completed)}>
-                <div className="flex items-center gap-3">
+              <div key={item.id} className="p-4 hover:bg-surface-2 transition-colors group border-b border-border last:border-0">
+                <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleToggleItem(item.id, item.is_completed)}>
                   <div onClick={(e) => e.stopPropagation()}>
                     <Checkbox 
                        checked={item.is_completed}
@@ -114,10 +125,25 @@ export function DayExecutionClient({ day, planId }: { day: LearningPlanDayWithIt
                   )}
                 </div>
                 {item.description && (
-                  <div className={`mt-2 pl-8 prose prose-sm max-w-none text-xs leading-relaxed ${item.is_completed ? 'text-text-muted' : 'text-text-secondary'}`}>
-                    <MarkdownPreview source={item.description} style={{ background: 'transparent' }} />
+                  <div
+                    className={`mt-2 pl-8 prose prose-sm max-w-none text-xs leading-relaxed cursor-pointer ${item.is_completed ? 'text-text-muted' : 'text-text-secondary'}`}
+                    onClick={() => {
+                      navigator.clipboard.writeText(item.description || '');
+                      toast.success('Copiado para a área de transferência');
+                    }}
+                  >
+                    <MarkdownPreview source={item.description} style={{ background: 'transparent', pointerEvents: 'none' }} />
                   </div>
                 )}
+                <div className="mt-3 pl-8">
+                  <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1 block">Anotações</label>
+                  <EditableRichText
+                    value={item.user_notes || ''}
+                    onSave={(val) => handleSaveItemNotes(item.id, val)}
+                    height={150}
+                    placeholder="Clique para adicionar anotações..."
+                  />
+                </div>
               </div>
             ))}
           </Card>
@@ -127,14 +153,14 @@ export function DayExecutionClient({ day, planId }: { day: LearningPlanDayWithIt
       <div className="space-y-3">
         <h3 className="text-lg font-semibold text-text-primary">Anotações / Respostas</h3>
         <Card className="p-4" data-color-mode="dark">
-            <MDEditor 
-              value={notes}
-              onChange={(val) => setNotes(val || '')}
-              onBlur={handleSaveNotes}
-              height={300}
-            />
+          <EditableRichText
+            value={notes}
+            onSave={handleSaveNotes}
+            height={300}
+            placeholder="Clique para adicionar anotações gerais do dia..."
+          />
           <div className="flex justify-end mt-2">
-            <span className="text-xs text-text-muted">{isSaving ? 'Salvando...' : 'Salvo automaticamente ao tirar o foco'}</span>
+            <span className="text-xs text-text-muted">{isSaving ? 'Salvando...' : ''}</span>
           </div>
         </Card>
       </div>
@@ -150,6 +176,58 @@ export function DayExecutionClient({ day, planId }: { day: LearningPlanDayWithIt
              {isCompleted ? 'Desmarcar Conclusão' : 'Concluir Dia de Estudo'}
            </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function EditableRichText({ value, onSave, height = 150, placeholder = 'Clique para adicionar conteúdo...' }: { value: string; onSave: (val: string) => void; height?: number; placeholder?: string }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+
+  const handleSave = () => {
+    onSave(editValue);
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditValue(value);
+    setIsEditing(false);
+  };
+
+  if (isEditing) {
+    return (
+      <div className="space-y-2" data-color-mode="dark">
+        <MDEditor
+          value={editValue}
+          onChange={(val) => setEditValue(val || '')}
+          height={height}
+          preview="edit"
+        />
+        <div className="flex gap-2 justify-end">
+          <Button size="sm" variant="outline" onClick={handleCancel}>Cancelar</Button>
+          <Button size="sm" onClick={handleSave}>Salvar</Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="group relative rounded-md border border-border bg-surface-1/50 min-h-[60px] p-3 cursor-pointer hover:border-brand-primary/50 transition-colors"
+      onClick={() => { setEditValue(value); setIsEditing(true); }}
+    >
+      {value ? (
+        <div data-color-mode="dark">
+          <MarkdownPreview source={value} style={{ background: 'transparent' }} />
+        </div>
+      ) : (
+        <p className="text-text-muted text-sm italic">{placeholder}</p>
+      )}
+      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditValue(value); setIsEditing(true); }}>
+          Editar
+        </Button>
       </div>
     </div>
   );

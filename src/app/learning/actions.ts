@@ -211,6 +211,17 @@ export async function updateDayNotes(dayId: string, notes: string) {
   if (error) throw error;
 }
 
+export async function updateItemNotes(itemId: string, notes: string) {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from('learning_day_items')
+    .update({ user_notes: notes })
+    .eq('id', itemId);
+
+  if (error) throw error;
+}
+
 export async function completeDay(dayId: string, isCompleted: boolean) {
   const supabase = await createClient();
 
@@ -324,7 +335,8 @@ export async function saveFullLearningPlan(
              url: oldItem?.url || null,
              item_type: oldItem?.item_type || 'task',
              order_index: idx,
-             is_completed: oldItem ? oldItem.is_completed : (item.is_completed || false)
+             is_completed: oldItem ? oldItem.is_completed : (item.is_completed || false),
+             user_notes: oldItem?.user_notes || null
           };
        });
        const { error: itemsErr } = await supabase.from('learning_day_items').insert(itemsToInsert);
