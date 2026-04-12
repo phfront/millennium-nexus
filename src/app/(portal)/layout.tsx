@@ -5,7 +5,7 @@ import { UserProvider } from '@/components/providers/UserProvider';
 import { AppSidebar } from '@/components/shell/AppSidebar';
 import { AppBottomNav } from '@/components/shell/AppBottomNav';
 import { AppHeader } from '@/components/shell/AppHeader';
-import { fetchDeniedModuleIdsForUser, filterModulesForNav } from '@/lib/modules/access';
+import { fetchDeniedModuleIdsForUser, fetchActiveModuleIdsForUser, filterActiveModules } from '@/lib/modules/access';
 import { PendingInvitesBanner } from '@/components/households/PendingInvitesBanner';
 import type { Module } from '@/types/database';
 
@@ -22,14 +22,15 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
     .from('profiles')
     .upsert({ id: user.id } as never, { onConflict: 'id', ignoreDuplicates: true });
 
-  const [profile, { data: modulesData }, deniedModuleIds] = await Promise.all([
+  const [profile, { data: modulesData }, deniedModuleIds, activeModuleIds] = await Promise.all([
     getUserProfile(user.id),
     supabase.from('modules').select('*').order('sort_order', { ascending: true }),
     fetchDeniedModuleIdsForUser(supabase, user.id),
+    fetchActiveModuleIdsForUser(supabase, user.id),
   ]);
 
   const allModules = (modulesData ?? []) as Module[];
-  const modules = filterModulesForNav(allModules, deniedModuleIds);
+  const modules = filterActiveModules(allModules, deniedModuleIds, activeModuleIds);
 
   return (
     <UserProvider user={user} profile={profile}>

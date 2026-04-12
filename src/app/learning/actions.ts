@@ -2,7 +2,6 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-import type { LearningPlan, LearningPlanDetails } from '@/types/learning';
 import type { ParsedPlan } from '@/lib/learningMarkdownParser';
 
 export async function fetchLearningPlans() {
@@ -208,6 +207,7 @@ export async function saveFullLearningPlan(planId: string, parsedPlan: ParsedPla
                plan_id: planId,
                section_id: secId,
                day_number: day.day_number,
+               scheduled_date: day.scheduled_date ?? null,
                title: day.title,
                content_prompt: day.content_prompt,
                is_completed: oldDay?.is_completed || false,
@@ -242,6 +242,7 @@ export async function saveFullLearningPlan(planId: string, parsedPlan: ParsedPla
               plan_id: planId,
               section_id: null,
               day_number: day.day_number,
+              scheduled_date: day.scheduled_date ?? null,
               title: day.title,
               content_prompt: day.content_prompt,
               is_completed: oldDay?.is_completed || false,

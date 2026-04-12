@@ -63,6 +63,14 @@ export interface UserModuleDenial {
   module_id: string;
 }
 
+export interface UserActiveModule {
+  id: string;
+  user_id: string;
+  module_id: string;
+  started_at: string;
+  last_accessed_at: string | null;
+}
+
 export interface Module {
   id: string;
   slug: string;
@@ -93,6 +101,12 @@ export type Database = {
         Row: UserModuleDenial;
         Insert: UserModuleDenial;
         Update: Partial<UserModuleDenial>;
+        Relationships: [];
+      };
+      user_active_modules: {
+        Row: UserActiveModule;
+        Insert: Omit<UserActiveModule, 'id' | 'started_at' | 'last_accessed_at'>;
+        Update: Partial<Pick<UserActiveModule, 'last_accessed_at'>>;
         Relationships: [];
       };
       households: {

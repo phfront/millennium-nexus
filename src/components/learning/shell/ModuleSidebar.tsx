@@ -3,11 +3,11 @@
 import { usePathname } from 'next/navigation';
 import { Sidebar, NavItem, Divider } from '@phfront/millennium-ui';
 import { BrandLogo } from '@/components/shell/BrandLogo';
-import { LayoutDashboard, Target, Home } from 'lucide-react';
+import { LayoutDashboard, Target, Home, List } from 'lucide-react';
 
 const NAV_LINKS = [
-  { href: '/learning', icon: <LayoutDashboard size={18} />, label: 'Painel' },
-  { href: '/learning/create', icon: <Target size={18} />, label: 'Novo Plano' },
+  { href: '/learning', icon: <LayoutDashboard size={18} />, label: 'Home' },
+  { href: '/learning/plans', icon: <List size={18} />, label: 'Lista de Planos' },
 ];
 
 export function ModuleSidebar() {

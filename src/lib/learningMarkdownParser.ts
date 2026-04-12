@@ -1,11 +1,26 @@
+// Simple hash function for deterministic IDs (SSR/client consistency)
+function generateId(prefix: string, content: string, counter: number): string {
+  let hash = 0;
+  const str = `${prefix}-${content}-${counter}`;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return `${prefix}-${Math.abs(hash).toString(36)}-${counter}`;
+}
+
 export interface ParsedItem {
+  _id: string;
   title: string;
   is_completed: boolean;
   description: string;
 }
 
 export interface ParsedDay {
+  _id: string;
   day_number: number;
+  scheduled_date: string | null;
   title: string;
   content_prompt: string;
   items: ParsedItem[];
@@ -34,6 +49,7 @@ export function parseMarkdownToPlan(markdown: string): ParsedPlan {
   let currentItemDescription: string[] = [];
   
   let globalDayCounter = 1;
+  let itemCounter = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -92,7 +108,9 @@ export function parseMarkdownToPlan(markdown: string): ParsedPlan {
       }
 
       currentDay = {
+        _id: generateId('day', title, globalDayCounter),
         day_number: dayNumber,
+        scheduled_date: null,
         title,
         content_prompt: '',
         items: []
@@ -109,7 +127,9 @@ export function parseMarkdownToPlan(markdown: string): ParsedPlan {
          currentDay.items.push(currentItem);
       }
 
+      itemCounter++;
       currentItem = {
+        _id: generateId('item', isTaskMatch[3].trim(), itemCounter),
         title: isTaskMatch[3].trim(),
         is_completed: isTaskMatch[2].toLowerCase() === 'x',
         description: ''
@@ -150,7 +170,8 @@ export function planToMarkdown(sections: any[], unsectionedDays: any[]): string 
   let md = '';
 
   const renderDay = (day: any) => {
-    md += `## Dia ${day.day_number} - ${day.title}\n`;
+    const moduleDayLabel = day.module_day ? ` (Módulo Dia ${day.module_day})` : '';
+    md += `## Dia ${day.day_number}${moduleDayLabel} - ${day.title}\n`;
     if (day.content_prompt) {
       md += `${day.content_prompt}\n`;
     }

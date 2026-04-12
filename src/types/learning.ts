@@ -29,6 +29,7 @@ export interface LearningPlanDay {
   plan_id: string;
   section_id: string | null;
   day_number: number;
+  module_day: number | null;
   scheduled_date: string | null;
   title: string | null;
   content_prompt: string | null;

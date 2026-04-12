@@ -15,6 +15,11 @@ const MDEditor = dynamic(
   { ssr: false }
 );
 
+const MarkdownPreview = dynamic(
+  () => import('@uiw/react-markdown-preview'),
+  { ssr: false }
+);
+
 export function DayExecutionClient({ day, planId }: { day: LearningPlanDayWithItems, planId: string }) {
   const router = useRouter();
   
@@ -109,8 +114,8 @@ export function DayExecutionClient({ day, planId }: { day: LearningPlanDayWithIt
                   )}
                 </div>
                 {item.description && (
-                  <div className={`mt-2 pl-8 prose prose-sm max-w-none font-mono text-xs leading-relaxed ${item.is_completed ? 'text-text-muted' : 'text-text-secondary'}`}>
-                    <div className="whitespace-pre-wrap">{item.description}</div>
+                  <div className={`mt-2 pl-8 prose prose-sm max-w-none text-xs leading-relaxed ${item.is_completed ? 'text-text-muted' : 'text-text-secondary'}`}>
+                    <MarkdownPreview source={item.description} style={{ background: 'transparent' }} />
                   </div>
                 )}
               </div>
@@ -139,7 +144,7 @@ export function DayExecutionClient({ day, planId }: { day: LearningPlanDayWithIt
            <Button 
              size="lg" 
              className="w-full md:w-auto font-semibold"
-             variant={isCompleted ? 'outline' : 'default'}
+             variant={isCompleted ? 'outline' : 'primary'}
              onClick={handleCompleteDay}
            >
              {isCompleted ? 'Desmarcar Conclusão' : 'Concluir Dia de Estudo'}
