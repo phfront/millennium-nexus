@@ -43,6 +43,25 @@ interface PushSubscription {
   auth: string;
 }
 
+interface LearningPlanNotification {
+  id: string;
+  plan_id: string;
+  type: 'fixed_time' | 'interval' | 'reminder';
+  frequency_minutes: number | null;
+  window_start: string | null;
+  window_end: string | null;
+  scheduled_times: string[] | null;
+  target_time: string | null;
+  lead_time: number | null;
+  enabled: boolean;
+  learning_plans: {
+    id: string;
+    user_id: string;
+    title: string;
+    status: string;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Helpers de tempo (horários configurados = relógio local do utilizador)
 // ---------------------------------------------------------------------------
@@ -99,6 +118,124 @@ function shouldFire(
   }
 
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Learning — lembretes de planos de aprendizado ativos
+// ---------------------------------------------------------------------------
+async function sendLearningPlanReminders(
+  supabase: ReturnType<typeof createClient>,
+  now: Date,
+): Promise<{ sent: number; expired: number; checked: number }> {
+  const { data: notifications, error } = await supabase
+    .from('learning_plan_notifications')
+    .select(`
+      id, plan_id, type,
+      frequency_minutes, window_start, window_end,
+      scheduled_times, target_time, lead_time, enabled,
+      learning_plans!inner ( id, user_id, title, status )
+    `)
+    .eq('enabled', true)
+    .eq('learning_plans.status', 'in_progress');
+
+  if (error) {
+    console.error('Erro ao buscar notificações de learning:', error);
+    return { sent: 0, expired: 0, checked: 0 };
+  }
+
+  const notifList = (notifications ?? []) as LearningPlanNotification[];
+  if (notifList.length === 0) return { sent: 0, expired: 0, checked: 0 };
+
+  const ownerIds = [...new Set(notifList.map((n) => n.learning_plans.user_id))];
+
+  const defaultTz = 'America/Sao_Paulo';
+  const tzByUser = new Map<string, string>();
+  if (ownerIds.length > 0) {
+    const { data: profileRows } = await supabase
+      .from('profiles')
+      .select('id, timezone')
+      .in('id', ownerIds);
+    for (const row of profileRows ?? []) {
+      const id = row.id as string;
+      const tz = (row.timezone as string | null)?.trim();
+      tzByUser.set(id, tz || defaultTz);
+    }
+  }
+
+  // Reuse shouldFire — the notification shape is compatible
+  const firing = notifList.filter((n) => {
+    const uid = n.learning_plans.user_id;
+    const tz = tzByUser.get(uid) ?? defaultTz;
+    return shouldFire(n as unknown as TrackerNotification, getZonedClock(now, tz));
+  });
+
+  if (firing.length === 0) return { sent: 0, expired: 0, checked: notifList.length };
+
+  // Fetch next pending day for each plan
+  const planIds = [...new Set(firing.map((n) => n.plan_id))];
+  const { data: dayRows } = await supabase
+    .from('learning_plan_days')
+    .select('id, plan_id, day_number, title')
+    .in('plan_id', planIds)
+    .eq('is_completed', false)
+    .order('day_number', { ascending: true });
+
+  const nextDayByPlan = new Map<string, { id: string; day_number: number; title: string | null }>();
+  for (const d of dayRows ?? []) {
+    const pid = d.plan_id as string;
+    if (!nextDayByPlan.has(pid)) {
+      nextDayByPlan.set(pid, { id: d.id as string, day_number: d.day_number as number, title: d.title as string | null });
+    }
+  }
+
+  const userIds = [...new Set(firing.map((n) => n.learning_plans.user_id))];
+  const { data: subs } = await supabase
+    .from('push_subscriptions')
+    .select('user_id, endpoint, p256dh, auth')
+    .in('user_id', userIds);
+
+  const subscriptions = (subs ?? []) as PushSubscription[];
+  let sent = 0;
+  let expired = 0;
+
+  for (const notif of firing) {
+    const plan = notif.learning_plans;
+    const userId = plan.user_id;
+    const nextDay = nextDayByPlan.get(notif.plan_id);
+    const dayLabel = nextDay
+      ? `Dia ${nextDay.day_number}${nextDay.title ? ` — ${nextDay.title}` : ''}`
+      : 'Continue estudando';
+    const url = nextDay
+      ? `/learning/${plan.id}/day/${nextDay.id}`
+      : `/learning/${plan.id}`;
+
+    const userSubs = subscriptions.filter((s) => s.user_id === userId);
+    for (const sub of userSubs) {
+      try {
+        await webPush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          JSON.stringify({
+            title: `📚 ${plan.title}`,
+            body: dayLabel,
+            url,
+            tag: `lp-${userId.slice(0, 8)}-${notif.plan_id.slice(0, 8)}`,
+            icon: '/icons/icon-192.png',
+          }),
+        );
+        sent++;
+      } catch (err: unknown) {
+        const status = (err as { statusCode?: number }).statusCode;
+        if (status === 404 || status === 410) {
+          await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+          expired++;
+        } else {
+          console.error('Erro push learning:', err);
+        }
+      }
+    }
+  }
+
+  return { sent, expired, checked: notifList.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -483,12 +620,16 @@ Deno.serve(async () => {
     }
   }
 
+  const learning = await sendLearningPlanReminders(supabase, now);
+  sent += learning.sent;
+  expired += learning.expired;
+
   const finance = await sendFinanceExpenseReminders(supabase, now);
   sent += finance.sent;
   expired += finance.expired;
 
   console.log(
-    `[send-push] ${now.toISOString()} — sent: ${sent}, expired removed: ${expired}, dg: ${firing.length}, finance: ${finance.candidates}`,
+    `[send-push] ${now.toISOString()} — sent: ${sent}, expired removed: ${expired}, dg: ${firing.length}, learning: ${learning.checked}, finance: ${finance.candidates}`,
   );
 
   return new Response(
@@ -496,6 +637,7 @@ Deno.serve(async () => {
       sent,
       expired,
       checked: firing.length,
+      learning_checked: learning.checked,
       finance_candidates: finance.candidates,
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },

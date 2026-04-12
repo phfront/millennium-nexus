@@ -5,7 +5,7 @@ import { UserProvider } from '@/components/providers/UserProvider';
 import { AppSidebar } from '@/components/shell/AppSidebar';
 import { AppBottomNav } from '@/components/shell/AppBottomNav';
 import { AppHeader } from '@/components/shell/AppHeader';
-import { fetchDeniedModuleIdsForUser, fetchActiveModuleIdsForUser, filterActiveModules } from '@/lib/modules/access';
+import { fetchDeniedModuleIdsForUser, fetchActiveModuleIdsForUser, filterModulesForNav } from '@/lib/modules/access';
 import { PendingInvitesBanner } from '@/components/households/PendingInvitesBanner';
 import type { Module } from '@/types/database';
 
@@ -30,7 +30,7 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
   ]);
 
   const allModules = (modulesData ?? []) as Module[];
-  const modules = filterActiveModules(allModules, deniedModuleIds, activeModuleIds);
+  const modules = filterModulesForNav(allModules, deniedModuleIds);
 
   return (
     <UserProvider user={user} profile={profile}>
@@ -45,7 +45,7 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
             {children}
           </main>
 
-          <AppBottomNav />
+          <AppBottomNav modules={modules} />
         </div>
       </div>
     </UserProvider>

@@ -6,7 +6,7 @@ import { useUserStore } from '@/store/user-store';
 import { useThemeStore } from '@/store/useThemeStore';
 import { useDailyGoalsStore } from '@/store/use-daily-goals-store';
 import { getLocalDateStr } from '@/lib/daily-goals/timezone';
-import type { Profile } from '@/types/database';
+import type { Profile } from '@/lib/auth-types';
 
 interface UserProviderProps {
   user: User | null;

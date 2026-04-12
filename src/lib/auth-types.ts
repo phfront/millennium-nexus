@@ -12,6 +12,12 @@ export type Profile = {
   updated_at: string;
   is_admin: boolean;
   email: string | null;
+  /** Provedor de IA: openai, gemini */
+  ai_provider: 'openai' | 'gemini' | null;
+  /** Chave de API para o provedor de IA */
+  ai_api_key: string | null;
+  /** Modelo preferido (ex: gpt-4o-mini, gemini-2.0-flash) */
+  ai_model: string | null;
 };
 
 export type AuthUser = {

@@ -10,6 +10,7 @@ import {
   Divider,
   Select,
   PageHeader,
+  Badge,
   useToast,
 } from "@phfront/millennium-ui";
 import {
@@ -22,10 +23,19 @@ import { useCurrentUser } from "@/hooks/use-current-user";
 import { useUserStore } from "@/store/user-store";
 import { syncBrandCookieAction } from "@/app/actions/brand-cookie";
 import { useThemeStore } from "@/store/useThemeStore";
+import {
+  updateProfileBasicInfo,
+  resetBrandColors,
+  saveBrandColors as saveBrandColorsAction,
+  updateAIConfig,
+  updateThemePreference,
+} from "./actions";
 import { createClient } from "@/lib/supabase/client";
-import { Camera } from "lucide-react";
+import { Camera, Sparkles, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { PushNotificationsCard } from "@/components/push/PushNotificationsCard";
 import { PwaInstallCard } from "@/components/pwa/PwaInstallCard";
+import { AI_PROVIDERS, AI_MODELS, DEFAULT_MODELS } from "@/lib/ai";
+import type { AIProvider } from "@/lib/ai";
 import type { Profile } from "@/types/database";
 
 const TIMEZONE_OPTIONS = [
@@ -105,6 +115,15 @@ export default function ProfilePage() {
   const [isResettingBrand, startResetBrand] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // AI config state
+  const [aiProvider, setAiProvider] = useState<string>(profile?.ai_provider ?? '');
+  const [aiApiKey, setAiApiKey] = useState('');
+  const [aiApiKeyMasked, setAiApiKeyMasked] = useState(false);
+  const [aiModel, setAiModel] = useState<string>(profile?.ai_model ?? '');
+  const [isSavingAI, startSavingAI] = useTransition();
+  const [aiTestResult, setAiTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isTestingAI, setIsTestingAI] = useState(false);
+
   useEffect(() => {
     if (profile) {
       setFullName(profile.full_name ?? "");
@@ -114,6 +133,16 @@ export default function ProfilePage() {
       setBrandSecondary(profile.brand_secondary_hex ?? null);
       setBrandPrimaryText(profile.brand_primary_hex ?? "");
       setBrandSecondaryText(profile.brand_secondary_hex ?? "");
+      // AI fields
+      setAiProvider(profile.ai_provider ?? '');
+      setAiModel(profile.ai_model ?? '');
+      if (profile.ai_api_key) {
+        setAiApiKey('••••••••' + profile.ai_api_key.slice(-4));
+        setAiApiKeyMasked(true);
+      } else {
+        setAiApiKey('');
+        setAiApiKeyMasked(false);
+      }
     }
   }, [profile]);
 
@@ -123,25 +152,12 @@ export default function ProfilePage() {
 
   async function handleSaveProfile() {
     startSaving(async () => {
-      if (!user) return;
-      const supabase = createClient();
-
-      const { data, error } = await supabase
-        .from("profiles")
-        .update({
-          full_name: fullName,
-          avatar_url: avatarUrl,
-          timezone,
-          updated_at: new Date().toISOString(),
-        } as never)
-        .eq("id", user.id)
-        .select()
-        .single();
-
-      if (error) {
-        toast.error("Erro ao salvar", parseSupabaseError(error));
-      } else {
-        updateProfileInStore(data as Profile);
+      const result = await updateProfileBasicInfo(fullName, avatarUrl, timezone);
+      
+      if (!result.success) {
+        toast.error("Erro ao salvar", result.error);
+      } else if (result.data) {
+        updateProfileInStore(result.data);
         toast.success("Salvo!", "Suas alterações foram salvas com sucesso.");
       }
     });
@@ -152,32 +168,24 @@ export default function ProfilePage() {
       if (!user) return;
       const p = RASTER_BRAND_PRIMARY_HEX;
       const s = RASTER_BRAND_SECONDARY_HEX;
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("profiles")
-        .update({
-          brand_primary_hex: p,
-          brand_secondary_hex: s,
-          updated_at: new Date().toISOString(),
-        } as never)
-        .eq("id", user.id)
-        .select()
-        .single();
+      const result = await resetBrandColors();
 
-      if (error) {
-        toast.error("Erro ao repor cores", parseSupabaseError(error));
+      if (!result.success) {
+        toast.error("Erro ao repor cores", result.error);
         return;
       }
-      setBrandPrimary(p);
-      setBrandSecondary(s);
-      setBrandPrimaryText(p);
-      setBrandSecondaryText(s);
-      updateProfileInStore(data as Profile);
-      await syncBrandCookieAction(p, s);
-      toast.success(
-        "Cores repostas",
-        "Primária e secundária definidas para os valores padrão (#006437 / #beac4e)."
-      );
+      if (result.data) {
+        setBrandPrimary(p);
+        setBrandSecondary(s);
+        setBrandPrimaryText(p);
+        setBrandSecondaryText(s);
+        updateProfileInStore(result.data);
+        await syncBrandCookieAction(p, s);
+        toast.success(
+          "Cores repostas",
+          "Primária e secundária definidas para os valores padrão (#006437 / #beac4e)."
+        );
+      }
     });
   }
 
@@ -207,30 +215,22 @@ export default function ProfilePage() {
     }
 
     startSavingColors(async () => {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("profiles")
-        .update({
-          brand_primary_hex: p,
-          brand_secondary_hex: s,
-          updated_at: new Date().toISOString(),
-        } as never)
-        .eq("id", user.id)
-        .select()
-        .single();
+      const result = await saveBrandColorsAction(p, s);
 
-      if (error) {
-        toast.error("Erro ao salvar cores", parseSupabaseError(error));
+      if (!result.success) {
+        toast.error("Erro ao salvar cores", result.error);
         return;
       }
-      setBrandPrimary(p);
-      setBrandSecondary(s);
-      if (p) setBrandPrimaryText(p);
-      else setBrandPrimaryText("");
-      if (s) setBrandSecondaryText(s);
-      else setBrandSecondaryText("");
-      updateProfileInStore(data as Profile);
-      await syncBrandCookieAction(p, s);
+      if (result.data) {
+        setBrandPrimary(p);
+        setBrandSecondary(s);
+        if (p) setBrandPrimaryText(p);
+        else setBrandPrimaryText("");
+        if (s) setBrandSecondaryText(s);
+        else setBrandSecondaryText("");
+        updateProfileInStore(result.data);
+        await syncBrandCookieAction(p, s);
+      }
       toast.success("Cores salvas!");
     });
   }
@@ -294,12 +294,10 @@ export default function ProfilePage() {
     const newTheme: "dark" | "light" = e.target.checked ? "dark" : "light";
     setTheme(newTheme);
 
-    if (!user) return;
-    const supabase = createClient();
-    await supabase
-      .from("profiles")
-      .update({ theme_preference: newTheme } as never)
-      .eq("id", user.id);
+    const result = await updateThemePreference(newTheme);
+    if (!result.success) {
+      toast.error("Erro ao salvar tema", result.error);
+    }
   }
 
   return (
@@ -493,6 +491,161 @@ export default function ProfilePage() {
             Salvar cores
           </Button>
         </Card.Footer>
+      </Card>
+
+      {/* AI Configuration Card */}
+      <Card>
+        <Card.Header>
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-brand-primary" />
+            <h2 className="text-sm font-semibold text-text-primary">
+              Inteligência Artificial
+            </h2>
+          </div>
+        </Card.Header>
+        <Card.Body className="space-y-5">
+          <p className="text-xs text-text-muted">
+            Configure seu provedor de IA para utilizar funcionalidades como geração automática de planos de estudo. Sua chave fica salva apenas na sua conta.
+          </p>
+
+          <Select
+            label="Provedor"
+            value={aiProvider}
+            options={[{ value: '', label: 'Nenhum (desativado)' }, ...AI_PROVIDERS]}
+            onChange={(v: string) => {
+              setAiProvider(v);
+              setAiTestResult(null);
+              if (v && DEFAULT_MODELS[v as AIProvider]) {
+                setAiModel(DEFAULT_MODELS[v as AIProvider]);
+              } else {
+                setAiModel('');
+              }
+            }}
+            helperText="Escolha entre OpenAI ou Google Gemini."
+          />
+
+          {aiProvider && (
+            <>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-text-primary block">API Key</label>
+                <Input
+                  type="password"
+                  value={aiApiKey}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    setAiApiKey(e.target.value);
+                    setAiApiKeyMasked(false);
+                    setAiTestResult(null);
+                  }}
+                  onFocus={() => {
+                    if (aiApiKeyMasked) {
+                      setAiApiKey('');
+                      setAiApiKeyMasked(false);
+                    }
+                  }}
+                  placeholder={aiProvider === 'openai' ? 'sk-...' : 'AIza...'}
+                />
+                <p className="text-xs text-text-muted">
+                  {aiProvider === 'openai'
+                    ? 'Obtenha em platform.openai.com → API Keys'
+                    : 'Obtenha em aistudio.google.com → API Keys'}
+                </p>
+              </div>
+
+              <Select
+                label="Modelo"
+                value={aiModel}
+                options={AI_MODELS[aiProvider as AIProvider] || []}
+                onChange={(v: string) => {
+                  setAiModel(v);
+                  setAiTestResult(null);
+                }}
+                helperText="Modelos mais rápidos custam menos. Modelos 'Pro' geram melhores resultados."
+              />
+
+              {aiTestResult && (
+                <div className={`flex items-start gap-2 p-3 rounded-lg border text-sm ${
+                  aiTestResult.success
+                    ? 'bg-success/10 border-success/30 text-success'
+                    : 'bg-danger/10 border-danger/30 text-danger'
+                }`}>
+                  {aiTestResult.success
+                    ? <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    : <XCircle className="w-4 h-4 shrink-0 mt-0.5" />}
+                  <span>{aiTestResult.message}</span>
+                </div>
+              )}
+            </>
+          )}
+        </Card.Body>
+        {aiProvider && (
+          <Card.Footer className="justify-between flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                if (!aiApiKey || aiApiKeyMasked) {
+                  setAiTestResult({ success: false, message: 'Insira uma API Key válida antes de testar.' });
+                  return;
+                }
+                setIsTestingAI(true);
+                setAiTestResult(null);
+                try {
+                  const res = await fetch('/api/ai/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider: aiProvider, apiKey: aiApiKey, model: aiModel }),
+                  });
+                  const result = await res.json();
+                  setAiTestResult(result);
+                } catch {
+                  setAiTestResult({ success: false, message: 'Erro de rede ao testar conexão.' });
+                } finally {
+                  setIsTestingAI(false);
+                }
+              }}
+              disabled={isTestingAI}
+            >
+              {isTestingAI ? (
+                <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Testando...</>
+              ) : 'Testar Conexão'}
+            </Button>
+            <Button
+              onClick={() => {
+                startSavingAI(async () => {
+                  let apiKeyToSend = null;
+                  // Only send key if user typed a new one
+                  if (!aiApiKeyMasked && aiApiKey) {
+                    apiKeyToSend = aiApiKey;
+                  }
+                  // If provider cleared, clear key
+                  if (!aiProvider) {
+                    apiKeyToSend = null;
+                  }
+
+                  const result = await updateAIConfig(
+                    aiProvider || null,
+                    apiKeyToSend,
+                    aiModel || null
+                  );
+
+                  if (!result.success) {
+                    toast.error('Erro ao salvar IA', result.error);
+                  } else if (result.data) {
+                    updateProfileInStore(result.data);
+                    // Re-mask the key
+                    if (!aiApiKeyMasked && aiApiKey) {
+                      setAiApiKey('••••••••' + aiApiKey.slice(-4));
+                      setAiApiKeyMasked(true);
+                    }
+                    toast.success('IA configurada!', 'Suas configurações de IA foram salvas.');
+                  }
+                });
+              }}
+              isLoading={isSavingAI}
+            >
+              Salvar configuração IA
+            </Button>
+          </Card.Footer>
+        )}
       </Card>
 
       <Card>

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Button, Card, Badge } from '@phfront/millennium-ui';
-import { Plus, Target, Calendar, BookOpen, ArrowRight } from 'lucide-react';
+import { Plus, Target, Calendar, BookOpen, ArrowRight, ChevronRight } from 'lucide-react';
 import { fetchLearningPlans } from '../actions';
 
 export default async function LearningHomePage() {
@@ -112,6 +112,27 @@ export default async function LearningHomePage() {
                   <h4 className="font-medium text-text-primary line-clamp-2">{plan.title}</h4>
                   {plan.description && (
                     <p className="text-sm text-text-secondary line-clamp-2 mt-1">{plan.description}</p>
+                  )}
+                  {plan.progress !== undefined && (
+                    <div className="mt-3">
+                      <div className="w-full h-1.5 bg-surface-3 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-brand-primary rounded-full transition-all"
+                          style={{ width: `${plan.progress}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-text-muted mt-1">{plan.progress}% concluído</p>
+                    </div>
+                  )}
+                  {plan.next_day && (
+                    <div className="mt-3 pt-3 border-t border-border flex items-center gap-2">
+                      <ChevronRight className="w-3.5 h-3.5 text-brand-primary shrink-0" />
+                      <p className="text-xs text-text-secondary truncate">
+                        <span className="text-brand-primary font-semibold">Dia {plan.next_day.day_number}</span>
+                        {' — '}
+                        {plan.next_day.title || 'Sessão de Estudo'}
+                      </p>
+                    </div>
                   )}
                 </Card>
               </Link>

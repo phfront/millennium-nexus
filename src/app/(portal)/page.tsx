@@ -4,7 +4,7 @@ import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { EmptyState, ModuleGridSkeleton, Button } from '@phfront/millennium-ui';
 import { ModuleGrid } from '@/components/modules/ModuleGrid';
-import { fetchDeniedModuleIdsForUser, fetchActiveModuleIdsForUser, filterActiveModules } from '@/lib/modules/access';
+import { fetchDeniedModuleIdsForUser, fetchActiveModuleIdsForUser, filterModulesForNav } from '@/lib/modules/access';
 import type { Module, Profile } from '@/types/database';
 import { Plus } from 'lucide-react';
 
@@ -13,7 +13,7 @@ async function DashboardContent() {
   const supabase = await createClient();
 
   const [{ data: profileData }, { data: modulesData }, deniedModuleIds, activeModuleIds] = await Promise.all([
-    supabase.from('profiles').select('full_name').eq('id', user!.id).single(),
+    supabase.from('profiles').select('full_name').eq('id', user!.id).maybeSingle(),
     supabase.from('modules').select('*').order('sort_order', { ascending: true }),
     fetchDeniedModuleIdsForUser(supabase, user!.id),
     fetchActiveModuleIdsForUser(supabase, user!.id),
@@ -21,7 +21,7 @@ async function DashboardContent() {
 
   const firstName = (profileData as Pick<Profile, 'full_name'> | null)?.full_name?.split(' ')[0];
   const allModules = (modulesData ?? []) as Module[];
-  const activeModules = filterActiveModules(allModules, deniedModuleIds, activeModuleIds);
+  const activeModules = filterModulesForNav(allModules, deniedModuleIds);
 
   return (
     <div className="space-y-6">

@@ -20,7 +20,7 @@ export default async function ModulePage({ params }: ModulePageProps) {
     .from('modules')
     .select('*')
     .eq('slug', module_slug)
-    .single();
+    .maybeSingle();
 
   const module = moduleData as Module | null;
 

@@ -9,6 +9,9 @@ export interface Profile {
   updated_at: string;
   is_admin: boolean;
   email: string | null;
+  ai_provider: 'openai' | 'gemini' | null;
+  ai_api_key: string | null;
+  ai_model: string | null;
 }
 
 export interface Household {
