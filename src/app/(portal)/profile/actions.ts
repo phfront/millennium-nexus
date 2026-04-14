@@ -5,16 +5,18 @@ import { createClient } from '@/lib/supabase/server';
 import type { Profile } from '@/lib/auth-types';
 
 async function getAuthenticatedClient() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const userSupabase = await createClient();
+  const { data: { user } } = await userSupabase.auth.getUser();
   if (!user) return { supabase: null, userId: null };
 
-  const adminSupabase = createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const adminSupabase = supabaseUrl && serviceRoleKey
+    ? createSupabaseClient(supabaseUrl, serviceRoleKey)
+    : null;
 
-  return { supabase: adminSupabase, userId: user.id };
+  // Fallback para client autenticado quando service role não está disponível.
+  return { supabase: adminSupabase ?? userSupabase, userId: user.id };
 }
 
 export async function updateProfileBasicInfo(
