@@ -628,8 +628,12 @@ Deno.serve(async () => {
   sent += finance.sent;
   expired += finance.expired;
 
+  const nutrition = await sendNutritionReminders(supabase, now);
+  sent += nutrition.sent;
+  expired += nutrition.expired;
+
   console.log(
-    `[send-push] ${now.toISOString()} — sent: ${sent}, expired removed: ${expired}, dg: ${firing.length}, learning: ${learning.checked}, finance: ${finance.candidates}`,
+    `[send-push] ${now.toISOString()} — sent: ${sent}, expired removed: ${expired}, dg: ${firing.length}, learning: ${learning.checked}, finance: ${finance.candidates}, nutrition: ${nutrition.checked}`,
   );
 
   return new Response(
@@ -639,7 +643,153 @@ Deno.serve(async () => {
       checked: firing.length,
       learning_checked: learning.checked,
       finance_candidates: finance.candidates,
+      nutrition_checked: nutrition.checked,
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
 });
+
+// ---------------------------------------------------------------------------
+// Nutrition — lembretes de hidratação e checklist de refeições
+// ---------------------------------------------------------------------------
+async function sendNutritionReminders(
+  supabase: ReturnType<typeof createClient>,
+  now: Date,
+): Promise<{ sent: number; expired: number; checked: number }> {
+  // Busca todos os users com diet_settings (opt-in ao módulo de nutrição)
+  const { data: settingsRows, error: settingsErr } = await supabase
+    .from('diet_settings')
+    .select('user_id, daily_water_target_ml');
+
+  if (settingsErr || !settingsRows?.length) {
+    if (settingsErr) console.error('Erro diet_settings:', settingsErr);
+    return { sent: 0, expired: 0, checked: 0 };
+  }
+
+  const userIds = settingsRows.map((r: { user_id: string }) => r.user_id);
+  const settingsMap = new Map(
+    settingsRows.map((r: { user_id: string; daily_water_target_ml: number }) => [r.user_id, r]),
+  );
+
+  // Busca timezones
+  const defaultTz = 'America/Sao_Paulo';
+  const { data: profileRows } = await supabase
+    .from('profiles')
+    .select('id, timezone')
+    .in('id', userIds);
+
+  const tzByUser = new Map<string, string>();
+  for (const row of profileRows ?? []) {
+    const id = row.id as string;
+    const tz = (row.timezone as string | null)?.trim();
+    tzByUser.set(id, tz || defaultTz);
+  }
+
+  // Busca push subscriptions
+  const { data: subsRows } = await supabase
+    .from('push_subscriptions')
+    .select('user_id, endpoint, p256dh, auth')
+    .in('user_id', userIds);
+
+  const subscriptions = (subsRows ?? []) as PushSubscription[];
+  if (subscriptions.length === 0) return { sent: 0, expired: 0, checked: settingsRows.length };
+
+  let sent = 0;
+  let expired = 0;
+
+  const todayStr = (tz: string) => getZonedDateString(now, tz);
+
+  for (const uid of userIds) {
+    const tz = tzByUser.get(uid) ?? defaultTz;
+    const clock = getZonedClock(now, tz);
+    const today = todayStr(tz);
+    const userSubs = subscriptions.filter((s) => s.user_id === uid);
+    if (userSubs.length === 0) continue;
+
+    const settings = settingsMap.get(uid);
+    if (!settings) continue;
+
+    // --- Hidratação: se às 16h local, consumo < 50% da meta ---
+    if (clock.hm === '16:00') {
+      const waterTarget = (settings as { daily_water_target_ml: number }).daily_water_target_ml;
+      if (waterTarget > 0) {
+        const { data: waterRows } = await supabase
+          .from('water_logs')
+          .select('amount_ml')
+          .eq('user_id', uid)
+          .eq('logged_date', today);
+
+        const totalWater = (waterRows ?? []).reduce(
+          (sum: number, r: { amount_ml: number }) => sum + r.amount_ml,
+          0,
+        );
+
+        if (totalWater < waterTarget * 0.5) {
+          const pct = Math.round((totalWater / waterTarget) * 100);
+          for (const sub of userSubs) {
+            try {
+              await webPush.sendNotification(
+                { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+                JSON.stringify({
+                  title: '💧 Hidratação baixa',
+                  body: `Você consumiu apenas ${pct}% da meta de água. Beba mais!`,
+                  url: '/health/nutrition',
+                  tag: `water-${uid.slice(0, 8)}-${today}`,
+                  icon: '/icons/icon-192.png',
+                }),
+              );
+              sent++;
+            } catch (err: unknown) {
+              const status = (err as { statusCode?: number }).statusCode;
+              if (status === 404 || status === 410) {
+                await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+                expired++;
+              } else {
+                console.error('Erro push nutrition water:', err);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // --- Refeições: se às 21h local, checklist vazio ---
+    if (clock.hm === '21:00') {
+      const { data: logRows } = await supabase
+        .from('diet_logs')
+        .select('id')
+        .eq('user_id', uid)
+        .eq('logged_date', today)
+        .limit(1);
+
+      if (!logRows || logRows.length === 0) {
+        for (const sub of userSubs) {
+          try {
+            await webPush.sendNotification(
+              { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+              JSON.stringify({
+                title: '🍽️ Marque suas refeições',
+                body: 'Você ainda não registrou nenhuma refeição hoje. Marque o que comeu!',
+                url: '/health/nutrition',
+                tag: `meal-${uid.slice(0, 8)}-${today}`,
+                icon: '/icons/icon-192.png',
+              }),
+            );
+            sent++;
+          } catch (err: unknown) {
+            const status = (err as { statusCode?: number }).statusCode;
+            if (status === 404 || status === 410) {
+              await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+              expired++;
+            } else {
+              console.error('Erro push nutrition meals:', err);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return { sent, expired, checked: settingsRows.length };
+}
+

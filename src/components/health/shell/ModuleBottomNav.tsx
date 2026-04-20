@@ -2,21 +2,22 @@
 
 import { usePathname } from 'next/navigation';
 import { BottomNav } from '@phfront/millennium-ui';
-import { LayoutDashboard, PlusCircle, History, Settings } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, UtensilsCrossed, History, Settings } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { href: '/health', icon: <LayoutDashboard size={20} />, label: 'Início' },
-  { href: '/health/log/new', icon: <PlusCircle size={20} />, label: 'Registrar' },
-  { href: '/health/history', icon: <History size={20} />, label: 'Histórico' },
-  { href: '/health/setup', icon: <Settings size={20} />, label: 'Meta' },
+  { href: '/health', icon: <LayoutDashboard size={20} />, label: 'Início', exact: true },
+  { href: '/health/nutrition', icon: <UtensilsCrossed size={20} />, label: 'Nutrição', exact: false },
+  { href: '/health/log/new', icon: <PlusCircle size={20} />, label: 'Registrar', exact: true },
+  { href: '/health/history', icon: <History size={20} />, label: 'Histórico', exact: true },
+  { href: '/health/setup', icon: <Settings size={20} />, label: 'Meta', exact: true },
 ];
 
 export function ModuleBottomNav() {
   const pathname = usePathname();
 
-  const items = NAV_ITEMS.map((item) => ({
+  const items = NAV_ITEMS.map(({ exact, ...item }) => ({
     ...item,
-    isActive: pathname === item.href,
+    isActive: exact ? pathname === item.href : pathname.startsWith(item.href),
   }));
 
   return (
