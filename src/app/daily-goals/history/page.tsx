@@ -17,15 +17,20 @@ export default function HistoryPage() {
   const today = getLocalDateStr(user?.profile?.timezone);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [heatmapKey, setHeatmapKey] = useState(0);
-  const { trackers } = useTrackers(false);
+  const { trackers } = useTrackers(false, { includeDeleted: true });
   const { getLogForTracker, upsertLog } = useLogs(selectedDate ?? today);
 
   const viewDate = selectedDate ?? today;
   const isPast = viewDate < today;
 
-  const schedForView = trackers.filter(
-    (t) => t.active && isTrackerScheduledForDate(t, viewDate, user?.profile?.timezone),
-  );
+  function trackerVisibleOnHistoryDate(t: Tracker) {
+    if (!isTrackerScheduledForDate(t, viewDate, user?.profile?.timezone)) return false;
+    const log = getLogForTracker(t.id);
+    if (t.deleted_at) return log != null;
+    return t.active;
+  }
+
+  const schedForView = trackers.filter(trackerVisibleOnHistoryDate);
   const historyPointsEarned = schedForView.reduce(
     (sum, t) => sum + Number(getLogForTracker(t.id)?.points_earned ?? 0),
     0,
@@ -83,7 +88,7 @@ export default function HistoryPage() {
           )}
 
           {trackers
-            .filter((t) => t.active && isTrackerScheduledForDate(t, viewDate, user?.profile?.timezone))
+            .filter(trackerVisibleOnHistoryDate)
             .map((tracker) => (
               <TrackerCard
                 key={tracker.id}

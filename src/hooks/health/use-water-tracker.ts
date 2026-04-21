@@ -54,13 +54,24 @@ export function useWaterTracker(targetMl = 2500) {
   }
 
   async function removeWater(logId: string) {
+    if (!user) throw new Error('Não autenticado');
     const supabase = createClient();
     const { error } = await supabase
       .from('water_logs')
       .delete()
-      .eq('id', logId);
+      .eq('id', logId)
+      .eq('user_id', user.id);
     if (error) throw new Error(error.message);
     setLogs((prev) => prev.filter((l) => l.id !== logId));
+  }
+
+  async function undoLastWater() {
+    if (logs.length === 0) return;
+    const lastLog = [...logs].sort((a, b) => {
+      if (a.logged_at === b.logged_at) return a.id.localeCompare(b.id);
+      return a.logged_at > b.logged_at ? -1 : 1;
+    })[0];
+    await removeWater(lastLog.id);
   }
 
   const totalMl = logs.reduce((sum, l) => sum + l.amount_ml, 0);
@@ -75,5 +86,6 @@ export function useWaterTracker(targetMl = 2500) {
     refetch: fetchLogs,
     addWater,
     removeWater,
+    undoLastWater,
   };
 }

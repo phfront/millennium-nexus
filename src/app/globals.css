@@ -40,3 +40,4 @@ body {
     padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
   }
 }
+

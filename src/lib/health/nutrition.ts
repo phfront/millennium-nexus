@@ -87,33 +87,6 @@ export function calcDailyTotals(logs: DietLog[], date: string): DailyTotals {
 }
 
 /**
- * Calcula buffer semanal usado (kcal extras na semana corrente).
- * Semana: segunda a domingo.
- */
-export function calcWeeklyBufferUsed(logs: DietLog[]): number {
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0=dom, 1=seg...
-  const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // offset para segunda
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - diff);
-  monday.setHours(0, 0, 0, 0);
-
-  const mondayStr = formatDateISO(monday);
-  const sundayDate = new Date(monday);
-  sundayDate.setDate(monday.getDate() + 6);
-  const sundayStr = formatDateISO(sundayDate);
-
-  return logs
-    .filter(
-      (l) =>
-        l.is_extra &&
-        l.logged_date >= mondayStr &&
-        l.logged_date <= sundayStr,
-    )
-    .reduce((sum, l) => sum + l.kcal, 0);
-}
-
-/**
  * Calcula percentual de aderência à dieta.
  * planned = kcal totais planejadas, consumed = kcal de logs não-extras.
  */
@@ -149,6 +122,31 @@ export function formatDateISO(date: Date): string {
  */
 export function todayISO(): string {
   return formatDateISO(new Date());
+}
+
+/**
+ * Semana civil local (segunda a domingo) em `YYYY-MM-DD`, usada no buffer de extras.
+ * Nova semana = segunda-feira; o consumido do buffer só conta logs com `is_extra` nesta faixa.
+ */
+export function getCalendarWeekBoundsISO(reference: Date = new Date()): { monday: string; sunday: string } {
+  const dayOfWeek = reference.getDay();
+  const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const monday = new Date(reference);
+  monday.setDate(reference.getDate() - diff);
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return { monday: formatDateISO(monday), sunday: formatDateISO(sunday) };
+}
+
+/**
+ * Soma kcal de consumo **extra** (`is_extra`) na semana corrente (segunda a domingo, hora local).
+ */
+export function calcWeeklyBufferUsed(logs: DietLog[], reference: Date = new Date()): number {
+  const { monday, sunday } = getCalendarWeekBoundsISO(reference);
+  return logs
+    .filter((l) => l.is_extra && l.logged_date >= monday && l.logged_date <= sunday)
+    .reduce((sum, l) => sum + l.kcal, 0);
 }
 
 /**

@@ -23,9 +23,19 @@ interface TrackerCardProps {
   isSaving?: boolean;
   viewDate?: string;  // Data para buscar goal_value histórico (quando readonly)
   onLogChange: (tracker: Tracker, partial: Partial<Log>) => void;
+  /** Esconde o atalho de configuração (ex.: widget na home). */
+  hideSettingsLink?: boolean;
 }
 
-export function TrackerCard({ tracker, log, readonly = false, isSaving = false, viewDate, onLogChange }: TrackerCardProps) {
+export function TrackerCard({
+  tracker,
+  log,
+  readonly = false,
+  isSaving = false,
+  viewDate,
+  onLogChange,
+  hideSettingsLink = false,
+}: TrackerCardProps) {
   const isReadonly = readonly;
   const isNumericType = tracker.type === 'counter' || tracker.type === 'slider';
   const serverValue = log?.value ?? 0;
@@ -110,37 +120,44 @@ export function TrackerCard({ tracker, log, readonly = false, isSaving = false, 
   const checkedItems = log?.checked_items ?? tracker.checklist_items?.map(() => false) ?? [];
 
   return (
-    <Card className={[
-      'flex flex-col gap-3 p-4 transition-all duration-200',
-      isSaving ? 'ring-1 ring-brand-primary/40' : '',
-    ].join(' ')}>
+    <Card
+      className={[
+        'flex flex-col transition-all duration-200',
+        hideSettingsLink
+          ? 'h-full min-h-0 gap-2 rounded-xl border-0 bg-surface-3/35 p-3 shadow-none ring-1 ring-inset ring-white/6'
+          : 'gap-3 p-4',
+        isSaving ? 'ring-1 ring-brand-primary/40' : '',
+      ].join(' ')}
+    >
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-text-primary truncate">{tracker.label}</h3>
+        <div className="flex min-w-0 items-center gap-2">
+          <h3 className="truncate text-sm font-semibold text-text-primary">{tracker.label}</h3>
           {isSaving && (
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse shrink-0" />
+            <span className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-brand-primary" />
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex shrink-0 items-center gap-1">
           {tracker.unit && !isSaving && (
             <span className="text-xs text-text-muted">{tracker.unit}</span>
           )}
           {isSaving && (
-            <span className="text-xs text-brand-primary/70 font-medium">salvando…</span>
+            <span className="text-xs font-medium text-brand-primary/70">salvando…</span>
           )}
-          <Link
-            href={`/daily-goals/config/${tracker.id}`}
-            className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-3 transition-colors cursor-pointer inline-flex"
-            aria-label="Configurar meta"
-          >
-            <Settings size={15} />
-          </Link>
+          {!hideSettingsLink && !tracker.deleted_at && (
+            <Link
+              href={`/daily-goals/config/${tracker.id}`}
+              className="inline-flex cursor-pointer rounded-md p-1.5 text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary"
+              aria-label="Configurar meta"
+            >
+              <Settings size={15} />
+            </Link>
+          )}
         </div>
       </div>
 
       {/* Input dinâmico */}
-      <div>
+      <div className={hideSettingsLink ? 'min-h-0 flex-1 overflow-y-auto' : undefined}>
         {tracker.type === 'counter' && (
           <HoldStepper
             value={displayNumericValue}

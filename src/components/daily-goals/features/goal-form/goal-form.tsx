@@ -66,7 +66,7 @@ function FieldLabelWithHelp({
   );
 }
 
-type TrackerPayload = Omit<Tracker, 'id' | 'user_id' | 'created_at'>;
+type TrackerPayload = Omit<Tracker, 'id' | 'user_id' | 'created_at' | 'deleted_at'>;
 
 type FormPayloadSource = {
   label: string;
@@ -132,7 +132,7 @@ function initialToFormSource(initial?: Partial<Tracker>): FormPayloadSource {
 
 interface GoalFormProps {
   initial?: Partial<Tracker>;
-  onSubmit: (data: Omit<Tracker, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
+  onSubmit: (data: TrackerPayload) => Promise<void>;
 }
 
 const TYPE_OPTIONS = [

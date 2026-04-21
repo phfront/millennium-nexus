@@ -27,6 +27,8 @@ export type Tracker = {
   start_date: string | null;
   /** Data de fim (ISO 'YYYY-MM-DD'). null = sem restrição de fim. */
   end_date: string | null;
+  /** Preenchido quando a meta foi removida (histórico de logs preservado). */
+  deleted_at: string | null;
   created_at: string;
 };
 

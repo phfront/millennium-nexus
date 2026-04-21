@@ -85,6 +85,36 @@ export interface Module {
   created_at: string;
 }
 
+export type DashboardWidgetBreakpoint = 'lg' | 'md' | 'sm';
+
+export interface UserDashboardWidget {
+  user_id: string;
+  widget_key: string;
+  is_visible: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserDashboardWidgetLayout {
+  user_id: string;
+  widget_key: string;
+  breakpoint: DashboardWidgetBreakpoint;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  unit_scale: number;
+  updated_at: string;
+}
+
+export interface UserDashboardWidgetVisibility {
+  user_id: string;
+  widget_key: string;
+  breakpoint: DashboardWidgetBreakpoint;
+  is_visible: boolean;
+  updated_at: string;
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -134,6 +164,30 @@ export type Database = {
         Row: ListItem;
         Insert: Omit<ListItem, 'id' | 'created_at'>;
         Update: Partial<Omit<ListItem, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      user_dashboard_widgets: {
+        Row: UserDashboardWidget;
+        Insert: Omit<UserDashboardWidget, 'created_at' | 'updated_at'> & {
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<UserDashboardWidget, 'user_id' | 'widget_key' | 'created_at'>>;
+        Relationships: [];
+      };
+      user_dashboard_widget_layouts: {
+        Row: UserDashboardWidgetLayout;
+        Insert: Omit<UserDashboardWidgetLayout, 'updated_at' | 'unit_scale'> & {
+          updated_at?: string;
+          unit_scale?: number;
+        };
+        Update: Partial<Omit<UserDashboardWidgetLayout, 'user_id' | 'widget_key' | 'breakpoint'>>;
+        Relationships: [];
+      };
+      user_dashboard_widget_visibility: {
+        Row: UserDashboardWidgetVisibility;
+        Insert: Omit<UserDashboardWidgetVisibility, 'updated_at'> & { updated_at?: string };
+        Update: Partial<Omit<UserDashboardWidgetVisibility, 'user_id' | 'widget_key' | 'breakpoint'>>;
         Relationships: [];
       };
     };

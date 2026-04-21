@@ -50,7 +50,8 @@ export function HistoryHeatmap({ selectedDate, onSelectDate, refreshKey }: Histo
         .from('trackers')
         .select('*')
         .eq('user_id', user.id)
-        .eq('active', true);
+        .eq('active', true)
+        .is('deleted_at', null);
 
       const trackers = (trackersData ?? []) as Tracker[];
       const trackerIds = trackers.map((t) => t.id);

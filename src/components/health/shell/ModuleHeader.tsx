@@ -7,7 +7,7 @@ import { useCurrentUser } from '@/hooks/use-current-user';
 import { useMobileSidebar } from './MobileSidebarContext';
 
 const ROUTE_LABELS: Record<string, string> = {
-  '/health': 'Saúde',
+  '/health/peso': 'Saúde',
   '/health/setup': 'Configurar meta',
   '/health/log/new': 'Registrar peso',
   '/health/history': 'Histórico',

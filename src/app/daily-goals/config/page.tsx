@@ -1,13 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { Plus, Pencil } from 'lucide-react';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { PageHeader, Switch, Skeleton, EmptyState } from '@phfront/millennium-ui';
 import { useTrackers } from '@/hooks/daily-goals/use-trackers';
 import { useToast } from '@phfront/millennium-ui';
 
 export default function ConfigPage() {
-  const { trackers, isLoading, updateTracker } = useTrackers(false);
+  const { trackers, isLoading, updateTracker, deleteTracker } = useTrackers(false);
   const { toast } = useToast();
 
   async function toggleActive(id: string, current: boolean) {
@@ -16,6 +16,22 @@ export default function ConfigPage() {
       toast.success(!current ? 'Meta ativada' : 'Meta desativada');
     } catch {
       toast.error('Erro ao atualizar meta');
+    }
+  }
+
+  async function handleRemove(id: string, label: string) {
+    if (
+      !confirm(
+        `Remover a meta "${label}"?\n\nOs registos dos dias anteriores mantêm-se no histórico; esta meta deixa de aparecer no dia a dia.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await deleteTracker(id);
+      toast.success('Meta removida');
+    } catch {
+      toast.error('Não foi possível remover a meta.');
     }
   }
 
@@ -72,6 +88,14 @@ export default function ConfigPage() {
                 >
                   <Pencil size={15} />
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => handleRemove(tracker.id, tracker.label)}
+                  className="p-2 rounded-md text-text-muted hover:text-red-400 hover:bg-surface-3 transition-colors cursor-pointer inline-flex"
+                  aria-label="Remover meta"
+                >
+                  <Trash2 size={15} />
+                </button>
               </div>
             </li>
           ))}

@@ -19,10 +19,13 @@ export default async function NutritionDashboardPage() {
   const waterTarget = (settings as { daily_water_target_ml: number } | null)?.daily_water_target_ml ?? 2500;
 
   return (
-    <div className="flex flex-col max-w-2xl mx-auto">
+    <div className="mx-auto flex w-full max-w-3xl flex-col px-1 sm:px-0">
       <PageHeader title="Nutrição" subtitle="Acompanhe sua dieta e hidratação do dia." />
-      <div className='flex flex-col gap-6'>
-        <WaterTrackerClient targetMl={waterTarget} />
+      <div className="flex flex-col gap-6">
+        <WaterTrackerClient
+          targetMl={waterTarget}
+          cardMinHeightClass="min-h-[200px]"
+        />
         <DailyChecklistClient />
       </div>
     </div>

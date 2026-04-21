@@ -135,6 +135,8 @@ export type FinanceMonthSnapshot = {
   surplus: number;
   accumulated_surplus: number;
   snapshot_at: string;
+  /** Conclusão explícita: a sobra deste mês não entra no acumulado dos meses seguintes. */
+  breaks_accumulated_carryover: boolean;
 };
 
 /** Lançamento individual congelado no fecho do mês (nome/valor gravados no momento do arquivo). */

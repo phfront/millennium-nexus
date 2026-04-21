@@ -6,14 +6,14 @@ import { NavItem, Divider } from '@phfront/millennium-ui';
 import { BrandLogo } from '@/components/shell/BrandLogo';
 import { useMobileSidebar } from './MobileSidebarContext';
 import {
-  LayoutDashboard, PlusCircle, History, Settings, Home, Scale,
+  PlusCircle, History, Settings, Home, Scale,
   UtensilsCrossed, Apple, ClipboardList, TrendingUp, SlidersHorizontal,
   ChevronDown, ChevronUp, X,
   HomeIcon,
 } from 'lucide-react';
 
 const WEIGHT_CHILDREN = [
-  { href: '/health', icon: <HomeIcon size={18} />, label: 'Início' },
+  { href: '/health/peso', icon: <HomeIcon size={18} />, label: 'Início' },
   { href: '/health/log/new', icon: <PlusCircle size={18} />, label: 'Registrar peso' },
   { href: '/health/history', icon: <History size={18} />, label: 'Histórico' },
   { href: '/health/setup', icon: <Settings size={18} />, label: 'Configurar meta' },
@@ -61,6 +61,44 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
 
       {/* Nav body */}
       <div className="flex-1 overflow-y-auto px-2 py-3 flex flex-col gap-1">
+        {/* Nutrição — submenu */}
+        <button
+          type="button"
+          onClick={() => setNutritionOpen((p) => !p)}
+          className={[
+            'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium cursor-pointer w-full',
+            'transition-[background-color,color] duration-[var(--transition-fast)]',
+            isOnNutrition
+              ? 'bg-brand-primary/10 text-brand-primary'
+              : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary',
+          ].join(' ')}
+        >
+          <span className={`shrink-0 ${isOnNutrition ? 'text-brand-primary' : ''}`}>
+            <UtensilsCrossed size={18} />
+          </span>
+          <span className="truncate flex-1 text-left">Nutrição</span>
+          <span className="shrink-0 text-text-muted">
+            {nutritionOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </span>
+        </button>
+
+        {nutritionOpen && (
+          <div className="flex flex-col gap-0.5 ml-3 pl-3 border-l border-border/50">
+            {NUTRITION_CHILDREN.map((l) => (
+              <NavItem
+                key={l.href}
+                href={l.href}
+                icon={l.icon}
+                label={l.label}
+                isActive={pathname === l.href}
+                onClick={onClose}
+              />
+            ))}
+          </div>
+        )}
+
+        <Divider className="my-2" />
+
         {/* Controle de peso — submenu */}
         <button
           type="button"
@@ -85,44 +123,6 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         {weightOpen && (
           <div className="flex flex-col gap-0.5 ml-3 pl-3 border-l border-border/50">
             {WEIGHT_CHILDREN.map((l) => (
-              <NavItem
-                key={l.href}
-                href={l.href}
-                icon={l.icon}
-                label={l.label}
-                isActive={pathname === l.href}
-                onClick={onClose}
-              />
-            ))}
-          </div>
-        )}
-
-        <Divider className="my-2" />
-
-        {/* Nutrition submenu trigger */}
-        <button
-          onClick={() => setNutritionOpen((p) => !p)}
-          className={[
-            'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium cursor-pointer w-full',
-            'transition-[background-color,color] duration-[var(--transition-fast)]',
-            isOnNutrition
-              ? 'bg-brand-primary/10 text-brand-primary'
-              : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary',
-          ].join(' ')}
-        >
-          <span className={`shrink-0 ${isOnNutrition ? 'text-brand-primary' : ''}`}>
-            <UtensilsCrossed size={18} />
-          </span>
-          <span className="truncate flex-1 text-left">Nutrição</span>
-          <span className="shrink-0 text-text-muted">
-            {nutritionOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </span>
-        </button>
-
-        {/* Nutrition sub-links */}
-        {nutritionOpen && (
-          <div className="flex flex-col gap-0.5 ml-3 pl-3 border-l border-border/50">
-            {NUTRITION_CHILDREN.map((l) => (
               <NavItem
                 key={l.href}
                 href={l.href}

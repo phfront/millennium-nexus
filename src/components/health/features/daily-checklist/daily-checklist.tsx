@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Plus, Flame, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { Check, Plus, Flame, ChevronDown, Trash2 } from 'lucide-react';
 import { Accordion, Button, Skeleton, useToast } from '@phfront/millennium-ui';
 import { useDietPlan } from '@/hooks/health/use-diet-plan';
 import { useDietHistory } from '@/hooks/health/use-diet-history';
@@ -11,7 +11,12 @@ import { calcMacros, formatKcal, formatGrams, formatQuantity, sumPlannedKcalFrom
 import { ExtraConsumptionModal } from './extra-consumption-modal';
 import { WeeklyBufferBadge } from './weekly-buffer-badge';
 
-export function DailyChecklist() {
+export interface DailyChecklistProps {
+  /** Oculta o bloco “Resumo do dia” (ex.: widget `health_meals` na home). */
+  hideDailySummary?: boolean;
+}
+
+export function DailyChecklist({ hideDailySummary = false }: DailyChecklistProps) {
   const { meals, isLoading: planLoading } = useDietPlan();
   const { settings } = useDietSettings();
   const {
@@ -116,73 +121,74 @@ export function DailyChecklist() {
   const dailyTarget = sumPlannedKcalFromMeals(meals);
   const weeklyBuffer = settings?.weekly_extra_buffer ?? 0;
   const kcalProgress = dailyTarget > 0 ? Math.min(100, Math.round((todayTotals.kcal / dailyTarget) * 100)) : 0;
+  const isWidget = hideDailySummary;
 
-  return (
-    <div className="flex flex-col gap-5">
-      {/* Daily summary header */}
-      <div className="p-4 bg-surface-2 rounded-xl border border-border">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Flame size={18} className="text-orange-400" />
-            <h3 className="text-sm font-semibold text-text-primary">Resumo do dia</h3>
-          </div>
-          <WeeklyBufferBadge used={weeklyBufferUsed} total={weeklyBuffer} />
+  function renderExtraCard() {
+    const extraLogs = todayLogs.filter((l) => l.is_extra);
+    return (
+      <div className="overflow-hidden rounded-xl border border-border bg-surface-2">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <span className="text-sm font-semibold text-text-primary">Consumo extra</span>
+          <Button size="sm" variant="ghost" leftIcon={<Plus size={14} />} onClick={() => setShowExtra(true)}>
+            Adicionar
+          </Button>
         </div>
-
-        {/* Kcal progress bar */}
-        <div className="mb-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-text-muted">Calorias consumidas</span>
-            <span className="text-xs font-medium text-text-secondary tabular-nums">
-              {formatKcal(todayTotals.kcal)} / {formatKcal(dailyTarget)} kcal
-            </span>
+        {extraLogs.length === 0 ? (
+          <p className="px-5 py-4 text-xs text-text-muted">Nenhum item extra registrado hoje.</p>
+        ) : (
+          <div className="divide-y divide-border">
+            {extraLogs.map((log) => (
+              <div key={log.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
+                <div className="flex min-w-0 flex-col">
+                  <span className="truncate text-sm text-text-primary">{log.food_name}</span>
+                  <span className="text-[10px] text-text-muted tabular-nums">
+                    {log.quantity_units > 1 ? `${log.quantity_units}× ` : ''}
+                    {formatQuantity(log.quantity_g, log.serving_unit)} · {Math.round(log.kcal)} kcal · {formatGrams(log.protein)} P
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleUncheck(log.id)}
+                  className="shrink-0 cursor-pointer p-1 text-text-muted transition-colors hover:text-red-400"
+                  title="Remover"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
           </div>
-          <div className="h-2.5 rounded-full bg-surface-3 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ease-out ${
-                kcalProgress > 100 ? 'bg-red-400' : kcalProgress > 80 ? 'bg-amber-400' : 'bg-green-400'
-              }`}
-              style={{ width: `${Math.min(kcalProgress, 100)}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Macro breakdown */}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="text-center p-1.5 rounded-lg bg-surface-3">
-            <p className="text-[10px] text-text-muted">Proteína</p>
-            <p className="text-xs font-bold text-blue-400 tabular-nums">{formatGrams(todayTotals.protein)}</p>
-          </div>
-          <div className="text-center p-1.5 rounded-lg bg-surface-3">
-            <p className="text-[10px] text-text-muted">Carboidratos</p>
-            <p className="text-xs font-bold text-amber-400 tabular-nums">{formatGrams(todayTotals.carbs)}</p>
-          </div>
-          <div className="text-center p-1.5 rounded-lg bg-surface-3">
-            <p className="text-[10px] text-text-muted">Gordura</p>
-            <p className="text-xs font-bold text-rose-400 tabular-nums">{formatGrams(todayTotals.fat)}</p>
-          </div>
-        </div>
+        )}
       </div>
+    );
+  }
 
-      {/* Meal checklists */}
+  const mealsAccordion = (
+    <Accordion
+      type="single"
+      value={expandedMeal ?? ''}
+      onValueChange={(v) => {
+        const s = typeof v === 'string' ? v : (Array.isArray(v) ? (v[0] ?? '') : '');
+        setExpandedMeal(s === '' ? null : s);
+      }}
+      className="flex flex-col gap-4"
+    >
       {meals.map((meal) => {
         const allChecked = meal.items.every((item) => Boolean(findPlanSlotLog(meal.name, item)));
         const checkedCount = meal.items.filter((item) => Boolean(findPlanSlotLog(meal.name, item))).length;
-        const isExpanded = expandedMeal === meal.id;
 
         return (
-          <div key={meal.id} className="bg-surface-2 rounded-xl border border-border overflow-hidden">
-            {/* Header — clickable to toggle */}
-            <button
-              onClick={() => setExpandedMeal(isExpanded ? null : meal.id)}
-              className="w-full px-4 py-3 flex items-center justify-between hover:bg-surface-3/50 transition-colors cursor-pointer"
-            >
-              <div className="flex flex-col items-start gap-0.5 min-w-0">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full shrink-0 ${allChecked ? 'bg-green-400' : 'bg-surface-3'}`} />
+          <Accordion.Item
+            key={meal.id}
+            value={meal.id}
+            className="rounded-xl border border-border bg-surface-2 shadow-none"
+          >
+            <Accordion.Trigger className="items-start bg-transparent! px-5 py-4 hover:bg-surface-3/50">
+              <div className="flex min-w-0 flex-col items-start gap-1 text-left">
+                <div className="flex items-center gap-2.5">
+                  <div className={`h-2 w-2 shrink-0 rounded-full ${allChecked ? 'bg-green-400' : 'bg-surface-3'}`} />
                   <span className="text-sm font-semibold text-text-primary">{meal.name}</span>
                 </div>
-                <div className="flex items-center gap-2 pl-4">
+                <div className="flex items-center gap-2 pl-5">
                   {meal.target_time && (
                     <span className="text-xs text-text-muted tabular-nums">{meal.target_time.slice(0, 5)}</span>
                   )}
@@ -191,13 +197,9 @@ export function DailyChecklist() {
                   </span>
                 </div>
               </div>
-              <div className="flex items-center shrink-0">
-                {isExpanded ? <ChevronUp size={16} className="text-text-muted" /> : <ChevronDown size={16} className="text-text-muted" />}
-              </div>
-            </button>
-
-            {isExpanded && (
-              <div className="border-t border-border divide-y divide-border">
+            </Accordion.Trigger>
+            <Accordion.Content innerClassName="!border-t-0 !px-0 !py-0">
+              <div className="divide-y divide-border border-t border-border">
                 {meal.items.map((item) => {
                   const slotLog = findPlanSlotLog(meal.name, item);
                   const units = item.quantity_units ?? 1;
@@ -216,28 +218,29 @@ export function DailyChecklist() {
                     return (
                       <div key={item.id}>
                         <div
-                          className={`px-4 py-3 flex items-center gap-3 transition-colors ${
+                          className={`flex items-center gap-3 px-5 py-3.5 transition-colors ${
                             slotFilled ? 'bg-green-500/5' : ''
                           }`}
                         >
                           <button
                             type="button"
                             onClick={() => handleMainCheckboxClick(meal.name, meal.target_time ?? null, item)}
-                            className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all cursor-pointer ${
+                            className={`flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border-2 transition-all ${
                               slotFilled
-                                ? 'bg-green-500 border-green-500 text-white'
+                                ? 'border-green-500 bg-green-500 text-white'
                                 : 'border-border hover:border-brand-primary'
                             }`}
                           >
                             {slotFilled && <Check size={12} strokeWidth={3} />}
                           </button>
-                          <div className="flex flex-col min-w-0 flex-1">
-                            <span className={`text-sm truncate ${mainLogged ? 'line-through text-text-muted' : 'text-text-primary'}`}>
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <span className={`truncate text-sm ${mainLogged ? 'text-text-muted line-through' : 'text-text-primary'}`}>
                               {item.food.name}
                             </span>
                             <span className="text-[10px] text-text-muted tabular-nums">
-                              {units > 1 ? `${units}× ` : ''}{formatQuantity(item.quantity_g, item.food.serving_unit)} ·{' '}
-                              {Math.round(mainMacros.kcal * units)} kcal · {formatGrams(mainMacros.protein * units)} P
+                              {units > 1 ? `${units}× ` : ''}
+                              {formatQuantity(item.quantity_g, item.food.serving_unit)} · {Math.round(mainMacros.kcal * units)} kcal ·{' '}
+                              {formatGrams(mainMacros.protein * units)} P
                             </span>
                           </div>
                         </div>
@@ -250,10 +253,10 @@ export function DailyChecklist() {
                       <Accordion type="single" className="w-full">
                         <Accordion.Item
                           value={`slot-${item.id}`}
-                          className="rounded-none border-0 shadow-none bg-transparent overflow-hidden"
+                          className="overflow-hidden rounded-none border-0 bg-transparent shadow-none"
                         >
                           <div
-                            className={`flex items-center gap-3 px-4 py-3 min-w-0 transition-colors ${
+                            className={`flex min-w-0 items-center gap-3 px-5 py-3.5 transition-colors ${
                               slotFilled ? 'bg-green-500/5' : ''
                             }`}
                           >
@@ -263,20 +266,20 @@ export function DailyChecklist() {
                                 e.stopPropagation();
                                 handleMainCheckboxClick(meal.name, meal.target_time ?? null, item);
                               }}
-                              className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all cursor-pointer ${
+                              className={`flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border-2 transition-all ${
                                 slotFilled
-                                  ? 'bg-green-500 border-green-500 text-white'
+                                  ? 'border-green-500 bg-green-500 text-white'
                                   : 'border-border hover:border-brand-primary'
                               }`}
                             >
                               {slotFilled && <Check size={12} strokeWidth={3} />}
                             </button>
-                            <Accordion.CustomTrigger className="flex-1 min-w-0 flex items-center justify-between gap-2 py-0 pr-0 w-auto! text-left rounded-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-brand-primary/40 focus-visible:ring-offset-0">
+                            <Accordion.CustomTrigger className="w-auto! flex min-w-0 flex-1 items-center justify-between gap-2 rounded-none py-0 pr-0 text-left hover:bg-transparent focus-visible:ring-2 focus-visible:ring-brand-primary/40 focus-visible:ring-offset-0">
                               {({ isExpanded }) => (
                                 <>
-                                  <div className="flex flex-col min-w-0 flex-1 items-start text-left">
+                                  <div className="flex min-w-0 flex-1 flex-col items-start text-left">
                                     <span
-                                      className={`text-sm truncate w-full ${mainLogged ? 'line-through text-text-muted' : 'text-text-primary'}`}
+                                      className={`w-full truncate text-sm ${mainLogged ? 'text-text-muted line-through' : 'text-text-primary'}`}
                                     >
                                       {item.food.name}
                                     </span>
@@ -287,16 +290,16 @@ export function DailyChecklist() {
                                     </span>
                                     {!mainLogged &&
                                       (selectedSubName ? (
-                                        <span className="text-[10px] text-green-400 truncate max-w-full mt-0.5">
+                                        <span className="mt-0.5 max-w-full truncate text-[10px] text-green-400">
                                           Marcado: {selectedSubName}
                                         </span>
                                       ) : (
-                                        <span className="text-[10px] text-text-muted mt-0.5">
+                                        <span className="mt-0.5 text-[10px] text-text-muted">
                                           {validSubs.length} substituição(ões)
                                         </span>
                                       ))}
                                     {mainLogged && (
-                                      <span className="text-[10px] text-text-muted mt-0.5">Substituições ao expandir</span>
+                                      <span className="mt-0.5 text-[10px] text-text-muted">Substituições ao expandir</span>
                                     )}
                                   </div>
                                   <ChevronDown
@@ -310,7 +313,7 @@ export function DailyChecklist() {
                               )}
                             </Accordion.CustomTrigger>
                           </div>
-                          <Accordion.Content>
+                          <Accordion.Content innerClassName="!px-0 !py-0">
                             <div className="flex flex-col bg-surface-3/10">
                               {validSubs.map((sub, subIdx) => {
                                 const sf = sub.substitute_food!;
@@ -322,7 +325,7 @@ export function DailyChecklist() {
                                   <div
                                     key={sub.id}
                                     className={[
-                                      'flex items-center gap-3 px-4 py-2.5',
+                                      'flex items-center gap-3 px-5 py-3',
                                       subIdx > 0 ? 'border-t border-border/50' : 'border-t border-border/40',
                                       subChecked ? 'bg-green-500/5' : '',
                                     ].join(' ')}
@@ -330,20 +333,20 @@ export function DailyChecklist() {
                                     <button
                                       type="button"
                                       onClick={() => handleSlotOption(meal.name, meal.target_time ?? null, item, { sub })}
-                                      className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all cursor-pointer ${
+                                      className={`flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border-2 transition-all ${
                                         subChecked
-                                          ? 'bg-green-500 border-green-500 text-white'
+                                          ? 'border-green-500 bg-green-500 text-white'
                                           : 'border-border hover:border-brand-primary'
                                       }`}
                                     >
                                       {subChecked && <Check size={12} strokeWidth={3} />}
                                     </button>
-                                    <div className="flex flex-col min-w-0 flex-1 border-l border-border/50 pl-3">
-                                      <span className="text-[10px] uppercase tracking-wide text-text-muted mb-0.5">
+                                    <div className="flex min-w-0 flex-1 flex-col border-l border-border/50 pl-3">
+                                      <span className="mb-0.5 text-[10px] uppercase tracking-wide text-text-muted">
                                         Substituição
                                       </span>
                                       <span
-                                        className={`text-sm truncate ${subChecked ? 'line-through text-text-muted' : 'text-text-primary'}`}
+                                        className={`truncate text-sm ${subChecked ? 'text-text-muted line-through' : 'text-text-primary'}`}
                                       >
                                         {sf.name}
                                       </span>
@@ -364,48 +367,82 @@ export function DailyChecklist() {
                   );
                 })}
               </div>
-            )}
-          </div>
+            </Accordion.Content>
+          </Accordion.Item>
         );
       })}
+    </Accordion>
+  );
 
-      {/* Extra logs */}
-      {(() => {
-        const extraLogs = todayLogs.filter((l) => l.is_extra);
-        return (
-          <div className="bg-surface-2 rounded-xl border border-border overflow-hidden">
-            <div className="px-4 py-3 flex items-center justify-between border-b border-border">
-              <span className="text-sm font-semibold text-text-primary">Consumo extra</span>
-              <Button size="sm" variant="ghost" leftIcon={<Plus size={14} />} onClick={() => setShowExtra(true)}>
-                Adicionar
-              </Button>
+  return (
+    <div
+      className={[
+        'flex min-h-0 flex-col',
+        isWidget ? 'h-full flex-1 gap-4' : 'gap-5',
+      ].join(' ')}
+    >
+      {/* Daily summary header */}
+      {!hideDailySummary && (
+        <div className="rounded-xl border border-border bg-surface-2 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Flame size={18} className="text-orange-400" />
+              <h3 className="text-sm font-semibold text-text-primary">Resumo do dia</h3>
             </div>
-            {extraLogs.length === 0 ? (
-              <p className="px-4 py-4 text-xs text-text-muted">Nenhum item extra registrado hoje.</p>
-            ) : (
-              <div className="divide-y divide-border">
-                {extraLogs.map((log) => (
-                  <div key={log.id} className="px-4 py-3 flex items-center justify-between gap-3">
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-sm text-text-primary truncate">{log.food_name}</span>
-                      <span className="text-[10px] text-text-muted tabular-nums">
-                        {log.quantity_units > 1 ? `${log.quantity_units}× ` : ''}{formatQuantity(log.quantity_g, log.serving_unit)} · {Math.round(log.kcal)} kcal · {formatGrams(log.protein)} P
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => handleUncheck(log.id)}
-                      className="p-1 text-text-muted hover:text-red-400 transition-colors cursor-pointer shrink-0"
-                      title="Remover"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <WeeklyBufferBadge used={weeklyBufferUsed} total={weeklyBuffer} />
           </div>
-        );
-      })()}
+
+          {/* Kcal progress bar */}
+          <div className="mb-3">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-xs text-text-muted">Calorias consumidas</span>
+              <span className="text-xs font-medium text-text-secondary tabular-nums">
+                {formatKcal(todayTotals.kcal)} / {formatKcal(dailyTarget)} kcal
+              </span>
+            </div>
+            <div className="h-2.5 overflow-hidden rounded-full bg-surface-3">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ease-out ${
+                  kcalProgress > 100 ? 'bg-red-400' : kcalProgress > 80 ? 'bg-amber-400' : 'bg-green-400'
+                }`}
+                style={{ width: `${Math.min(kcalProgress, 100)}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Macro breakdown */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg bg-surface-3 p-1.5 text-center">
+              <p className="text-[10px] text-text-muted">Proteína</p>
+              <p className="text-xs font-bold tabular-nums text-blue-400">{formatGrams(todayTotals.protein)}</p>
+            </div>
+            <div className="rounded-lg bg-surface-3 p-1.5 text-center">
+              <p className="text-[10px] text-text-muted">Carboidratos</p>
+              <p className="text-xs font-bold tabular-nums text-amber-400">{formatGrams(todayTotals.carbs)}</p>
+            </div>
+            <div className="rounded-lg bg-surface-3 p-1.5 text-center">
+              <p className="text-[10px] text-text-muted">Gordura</p>
+              <p className="text-xs font-bold tabular-nums text-rose-400">{formatGrams(todayTotals.fat)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isWidget ? (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-3 py-3 sm:px-4 sm:py-4">
+            <div className="flex flex-col gap-4">
+              {mealsAccordion}
+              {renderExtraCard()}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {mealsAccordion}
+          {renderExtraCard()}
+        </div>
+      )}
 
       {showExtra && (
         <ExtraConsumptionModal onClose={() => setShowExtra(false)} />
