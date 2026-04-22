@@ -82,6 +82,7 @@ export function useDietPlan() {
         name: meal.name,
         sort_order: meal.sort_order,
         target_time: meal.target_time,
+        meal_reminder_enabled: meal.meal_reminder_enabled ?? true,
         items,
       };
     });
@@ -145,11 +146,17 @@ export function useDietPlan() {
       .single();
     if (error) throw new Error(error.message);
     const newMeal = data as DietPlanMeal;
-    setMeals((prev) => [...prev, { ...newMeal, items: [] }]);
+    setMeals((prev) => [
+      ...prev,
+      { ...newMeal, meal_reminder_enabled: newMeal.meal_reminder_enabled ?? true, items: [] },
+    ]);
     return newMeal;
   }
 
-  async function updateMeal(mealId: string, values: Partial<Pick<DietPlanMeal, 'name' | 'target_time'>>) {
+  async function updateMeal(
+    mealId: string,
+    values: Partial<Pick<DietPlanMeal, 'name' | 'target_time' | 'meal_reminder_enabled'>>,
+  ) {
     const supabase = createClient();
     const { error } = await supabase
       .from('diet_plan_meals')

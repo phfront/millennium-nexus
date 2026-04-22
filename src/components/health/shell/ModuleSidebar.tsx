@@ -10,6 +10,7 @@ import {
   UtensilsCrossed, Apple, ClipboardList, TrendingUp, SlidersHorizontal,
   ChevronDown, ChevronUp, X,
   HomeIcon,
+  Bell,
 } from 'lucide-react';
 
 const WEIGHT_CHILDREN = [
@@ -28,6 +29,7 @@ const NUTRITION_CHILDREN = [
   { href: '/health/nutrition/plan', icon: <ClipboardList size={18} />, label: 'Minha Dieta' },
   { href: '/health/nutrition/foods', icon: <Apple size={18} />, label: 'Alimentos' },
   { href: '/health/nutrition/history', icon: <TrendingUp size={18} />, label: 'Tendências' },
+  { href: '/health/nutrition/notifications', icon: <Bell size={18} />, label: 'Lembretes' },
   { href: '/health/nutrition/settings', icon: <SlidersHorizontal size={18} />, label: 'Configurações' },
 ];
 

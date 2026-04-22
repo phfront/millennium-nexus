@@ -16,6 +16,10 @@ export type DietSettings = {
   user_id: string;
   weekly_extra_buffer: number;
   daily_water_target_ml: number;
+  /** Lembretes push por horário das refeições do plano ativo. */
+  meal_reminder_push_enabled: boolean;
+  /** Minutos antes do target_time (5–120). */
+  meal_reminder_lead_minutes: number;
   created_at: string;
   updated_at: string;
 };
@@ -34,6 +38,8 @@ export type DietPlanMeal = {
   name: string;
   sort_order: number;
   target_time: string | null;
+  /** Incluir esta refeição nos lembretes push (requer target_time). */
+  meal_reminder_enabled: boolean;
 };
 
 export type DietPlanMealItem = {

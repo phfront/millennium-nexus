@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { Save } from 'lucide-react';
 import { PageHeader, Button, Skeleton, useToast } from '@phfront/millennium-ui';
@@ -104,6 +105,14 @@ export default function NutritionSettingsPage() {
           Salvar
         </Button>
       </div>
+
+      <p className="text-sm text-text-muted text-center">
+        Lembretes push antes das refeições:{' '}
+        <Link href="/health/nutrition/notifications" className="text-brand-primary underline hover:no-underline">
+          configurar lembretes
+        </Link>
+        .
+      </p>
     </div>
   );
 }

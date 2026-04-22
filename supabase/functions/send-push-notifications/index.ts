@@ -5,6 +5,9 @@
  * 1) Daily Goals: regras em `tracker_notifications` (horário local do utilizador).
  * 2) Nexus Finance: despesas com vencimento — `finance_user_settings` define
  *    quantos dias antes avisar e a hora do push; dedupe em `finance_expense_reminder_sent`.
+ * 3) Nutrição — lembretes por `diet_plan_meals.target_time` (relógio local via `profiles.timezone`),
+ *    antecedência em `diet_settings.meal_reminder_lead_minutes`, opt-in `meal_reminder_push_enabled`;
+ *    além dos fixos 16h (água) e 21h (checklist vazio).
  *
  * Secrets necessários (Supabase Dashboard → Settings → Edge Functions):
  *   VAPID_PUBLIC_KEY   – chave pública VAPID
@@ -68,6 +71,14 @@ interface LearningPlanNotification {
 function toMinutes(timeStr: string): number {
   const [h, m] = timeStr.split(':').map(Number);
   return h * 60 + m;
+}
+
+/** Minuto do dia local em que deve disparar o lembrete (N minutos antes do target_time). */
+function mealReminderMinuteOfDay(targetTimeStr: string, leadMinutes: number): number {
+  const targetMin = toMinutes(targetTimeStr.slice(0, 5));
+  let reminderMin = targetMin - leadMinutes;
+  if (reminderMin < 0) reminderMin += 24 * 60;
+  return reminderMin;
 }
 
 /** Hora e minuto num fuso IANA (ex.: America/Sao_Paulo), para o instante `now` em UTC. */
@@ -659,16 +670,25 @@ async function sendNutritionReminders(
   // Busca todos os users com diet_settings (opt-in ao módulo de nutrição)
   const { data: settingsRows, error: settingsErr } = await supabase
     .from('diet_settings')
-    .select('user_id, daily_water_target_ml');
+    .select(
+      'user_id, daily_water_target_ml, meal_reminder_push_enabled, meal_reminder_lead_minutes',
+    );
 
   if (settingsErr || !settingsRows?.length) {
     if (settingsErr) console.error('Erro diet_settings:', settingsErr);
     return { sent: 0, expired: 0, checked: 0 };
   }
 
+  type DietSettingsRow = {
+    user_id: string;
+    daily_water_target_ml: number;
+    meal_reminder_push_enabled?: boolean;
+    meal_reminder_lead_minutes?: number;
+  };
+
   const userIds = settingsRows.map((r: { user_id: string }) => r.user_id);
   const settingsMap = new Map(
-    settingsRows.map((r: { user_id: string; daily_water_target_ml: number }) => [r.user_id, r]),
+    settingsRows.map((r: DietSettingsRow) => [r.user_id, r]),
   );
 
   // Busca timezones
@@ -693,6 +713,82 @@ async function sendNutritionReminders(
 
   const subscriptions = (subsRows ?? []) as PushSubscription[];
   if (subscriptions.length === 0) return { sent: 0, expired: 0, checked: settingsRows.length };
+
+  const usersWithSub = new Set(subscriptions.map((s) => s.user_id));
+
+  /** user_id -> refeições do plano ativo com target_time e lembrete por refeição ativo */
+  const mealsByUser = new Map<string, { id: string; name: string; target_time: string }[]>();
+  const mealReminderEligible = settingsRows.filter((r: DietSettingsRow) => {
+    const on = r.meal_reminder_push_enabled === true;
+    return on && usersWithSub.has(r.user_id);
+  }) as DietSettingsRow[];
+
+  if (mealReminderEligible.length > 0) {
+    const eligibleIds = mealReminderEligible.map((r) => r.user_id);
+    const { data: activePlans, error: planErr } = await supabase
+      .from('diet_plans')
+      .select('id, user_id')
+      .eq('is_active', true)
+      .in('user_id', eligibleIds);
+
+    if (planErr) {
+      console.error('Erro diet_plans ativos (meal reminders):', planErr);
+    } else {
+      const planIdToUser = new Map(
+        (activePlans ?? []).map((p: { id: string; user_id: string }) => [p.id, p.user_id]),
+      );
+      const planIds = [...planIdToUser.keys()];
+      if (planIds.length > 0) {
+        const { data: mealRows, error: mealErr } = await supabase
+          .from('diet_plan_meals')
+          .select('id, name, target_time, plan_id')
+          .in('plan_id', planIds)
+          .eq('meal_reminder_enabled', true)
+          .not('target_time', 'is', null);
+
+        if (mealErr) {
+          console.error('Erro diet_plan_meals (meal reminders):', mealErr);
+        } else {
+          for (const row of mealRows ?? []) {
+            const uid = planIdToUser.get(row.plan_id as string);
+            if (!uid) continue;
+            const tt = row.target_time as string;
+            if (!tt) continue;
+            const list = mealsByUser.get(uid) ?? [];
+            list.push({
+              id: row.id as string,
+              name: row.name as string,
+              target_time: tt,
+            });
+            mealsByUser.set(uid, list);
+          }
+        }
+      }
+    }
+  }
+
+  /** `${userId}\t${localYmd}` -> Set de meal_name já registados (não extra) */
+  const loggedMealsCache = new Map<string, Set<string>>();
+
+  async function getLoggedMealNamesForDay(userId: string, localYmd: string): Promise<Set<string>> {
+    const key = `${userId}\t${localYmd}`;
+    const cached = loggedMealsCache.get(key);
+    if (cached) return cached;
+    const { data: logRows, error: logErr } = await supabase
+      .from('diet_logs')
+      .select('meal_name')
+      .eq('user_id', userId)
+      .eq('logged_date', localYmd)
+      .eq('is_extra', false);
+    if (logErr) {
+      console.error('Erro diet_logs (meal reminder skip):', logErr);
+      loggedMealsCache.set(key, new Set());
+      return new Set();
+    }
+    const names = new Set((logRows ?? []).map((r: { meal_name: string }) => r.meal_name));
+    loggedMealsCache.set(key, names);
+    return names;
+  }
 
   let sent = 0;
   let expired = 0;
@@ -746,6 +842,53 @@ async function sendNutritionReminders(
                 expired++;
               } else {
                 console.error('Erro push nutrition water:', err);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // --- Lembretes por horário da refeição (target_time − lead, relógio local) ---
+    const srow = settings as DietSettingsRow;
+    if (srow.meal_reminder_push_enabled === true) {
+      const lead = Math.round(Number(srow.meal_reminder_lead_minutes ?? 15));
+      const leadClamped = Math.min(120, Math.max(5, lead));
+      const mealsForUser = mealsByUser.get(uid);
+      if (mealsForUser?.length) {
+        for (const meal of mealsForUser) {
+          const reminderMin = mealReminderMinuteOfDay(meal.target_time, leadClamped);
+          if (clock.totalMinutes !== reminderMin) continue;
+
+          const loggedNames = await getLoggedMealNamesForDay(uid, today);
+          if (loggedNames.has(meal.name)) continue;
+
+          const hm = meal.target_time.slice(0, 5);
+          const body =
+            leadClamped <= 1
+              ? `É hora de ${meal.name} (${hm}).`
+              : `Em ${leadClamped} min é ${meal.name} (${hm}).`;
+
+          for (const sub of userSubs) {
+            try {
+              await webPush.sendNotification(
+                { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+                JSON.stringify({
+                  title: '🍽️ Refeição a seguir',
+                  body,
+                  url: '/health/nutrition',
+                  tag: `meal-reminder-${meal.id}-${today}`,
+                  icon: '/icons/icon-192.png',
+                }),
+              );
+              sent++;
+            } catch (err: unknown) {
+              const status = (err as { statusCode?: number }).statusCode;
+              if (status === 404 || status === 410) {
+                await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+                expired++;
+              } else {
+                console.error('Erro push nutrition meal time:', err);
               }
             }
           }

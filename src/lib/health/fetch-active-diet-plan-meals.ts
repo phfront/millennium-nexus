@@ -67,6 +67,7 @@ export async function fetchActiveDietPlanMeals(
       name: meal.name,
       sort_order: meal.sort_order,
       target_time: meal.target_time,
+      meal_reminder_enabled: meal.meal_reminder_enabled ?? true,
       items,
     };
   });
