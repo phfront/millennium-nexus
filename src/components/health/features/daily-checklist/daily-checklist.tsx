@@ -1,19 +1,41 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Plus, Flame, ChevronDown, Trash2 } from "lucide-react";
+import { Check, Plus, Flame, ChevronDown, Trash2, Eraser, ListChecks } from "lucide-react";
 import { Accordion, Button, Skeleton, useToast } from "@phfront/millennium-ui";
 import { useDietPlan } from "@/hooks/health/use-diet-plan";
-import { useDietHistory } from "@/hooks/health/use-diet-history";
-import type { Food, FoodSubstitution } from "@/types/nutrition";
+import { useDietHistory, type ChecklistPlanItem } from "@/hooks/health/use-diet-history";
+import type { DietLog, DietPlanMealWithItems, Food, FoodSubstitution } from "@/types/nutrition";
+import { useDietHistoryStore } from "@/store/diet-history-store";
 import { useDietSettings } from "@/hooks/health/use-diet-settings";
 import {
   calcMacros,
   formatKcal,
   formatGrams,
   formatQuantity,
+  planSlotAllowedFoodNames,
   sumPlannedKcalFromMeals,
+  todayISO,
 } from "@/lib/health/nutrition";
+
+/** Leitura fresca da store (o `findPlanSlotLog` do hook fica stale em loops async). */
+function findPlanSlotLogFresh(
+  mealName: string,
+  item: ChecklistPlanItem,
+): DietLog | undefined {
+  const logs = useDietHistoryStore.getState().logs;
+  const day = todayISO();
+  const allowed = planSlotAllowedFoodNames(
+    item as DietPlanMealWithItems["items"][number],
+  );
+  return logs.find(
+    (l) =>
+      l.logged_date === day &&
+      l.meal_name === mealName &&
+      !l.is_extra &&
+      allowed.has(l.food_name),
+  );
+}
 import { ExtraConsumptionModal } from "./extra-consumption-modal";
 import { WeeklyBufferBadge } from "./weekly-buffer-badge";
 
@@ -35,11 +57,13 @@ export function DailyChecklist({
     checkMealItem,
     uncheckLog,
     findPlanSlotLog,
-  } = useDietHistory();
+    clearDietLogsForDate,
+  } = useDietHistory({ activePlanMeals: meals });
   const { toast } = useToast();
 
   const [showExtra, setShowExtra] = useState(false);
   const [expandedMeal, setExpandedMeal] = useState<string | null>(null);
+  const [mealBulkLoadingId, setMealBulkLoadingId] = useState<string | null>(null);
 
   const isLoading = planLoading || logsLoading;
 
@@ -50,6 +74,25 @@ export function DailyChecklist({
       toast.error(
         "Erro",
         e instanceof Error ? e.message : "Falha ao desmarcar"
+      );
+    }
+  }
+
+  async function handleClearTodayConsumption() {
+    if (
+      !confirm(
+        "Apagar todo o consumo de dieta de hoje (refeições marcadas e extras)? Esta ação não pode ser desfeita. A hidratação não é alterada."
+      )
+    ) {
+      return;
+    }
+    try {
+      await clearDietLogsForDate(todayISO());
+      toast.success("Consumo de hoje", "Registos de dieta apagados.");
+    } catch (e) {
+      toast.error(
+        "Erro",
+        e instanceof Error ? e.message : "Falha ao limpar o dia"
       );
     }
   }
@@ -127,6 +170,63 @@ export function DailyChecklist({
         "Erro",
         e instanceof Error ? e.message : "Falha ao atualizar"
       );
+    }
+  }
+
+  async function handleMarkAllMealItems(meal: (typeof meals)[number]) {
+    setMealBulkLoadingId(meal.id);
+    try {
+      for (const item of meal.items) {
+        if (!item.food?.name) continue;
+        const units = item.quantity_units ?? 1;
+        const slotLog = findPlanSlotLogFresh(meal.name, item);
+        if (!slotLog) {
+          await checkMealItem(
+            meal.name,
+            item.food,
+            item.quantity_g,
+            false,
+            units,
+            meal.target_time ?? null,
+          );
+        } else if (slotLog.food_name !== item.food.name) {
+          await uncheckLog(slotLog.id);
+          await checkMealItem(
+            meal.name,
+            item.food,
+            item.quantity_g,
+            false,
+            units,
+            meal.target_time ?? null,
+          );
+        }
+      }
+      toast.success(meal.name, "Todos os itens do plano foram marcados.");
+    } catch (e) {
+      toast.error(
+        "Erro",
+        e instanceof Error ? e.message : "Falha ao marcar a refeição",
+      );
+    } finally {
+      setMealBulkLoadingId(null);
+    }
+  }
+
+  async function handleUnmarkAllMealItems(meal: (typeof meals)[number]) {
+    setMealBulkLoadingId(meal.id);
+    try {
+      for (const item of meal.items) {
+        const slotLog = findPlanSlotLogFresh(meal.name, item);
+        if (slotLog) await uncheckLog(slotLog.id);
+      }
+      toast.success(meal.name, "Itens desmarcados.");
+    } catch (e) {
+      toast.error(
+        "Erro",
+        e instanceof Error ? e.message : "Falha ao desmarcar a refeição",
+      );
+    } finally {
+      setMealBulkLoadingId(null);
     }
   }
 
@@ -237,36 +337,85 @@ export function DailyChecklist({
           Boolean(findPlanSlotLog(meal.name, item))
         ).length;
 
+        const bulkBusy = mealBulkLoadingId === meal.id;
+
         return (
           <Accordion.Item
             key={meal.id}
             value={meal.id}
             className="rounded-xl border border-border bg-surface-2 shadow-none"
           >
-            <Accordion.Trigger className="items-start bg-transparent! px-5 py-4 hover:bg-surface-3/50">
-              <div className="flex min-w-0 flex-col items-start gap-1 text-left">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={`h-2 w-2 shrink-0 rounded-full ${
-                      allChecked ? "bg-green-400" : "bg-surface-3"
-                    }`}
-                  />
-                  <span className="text-sm font-semibold text-text-primary">
-                    {meal.name}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 pl-5">
-                  {meal.target_time && (
-                    <span className="text-xs text-text-muted tabular-nums">
-                      {meal.target_time.slice(0, 5)}
-                    </span>
-                  )}
-                  <span className="text-xs text-text-muted tabular-nums">
-                    {checkedCount}/{meal.items.length} itens
-                  </span>
-                </div>
+            <div className="flex min-w-0 items-stretch">
+              <Accordion.CustomTrigger className="min-w-0 flex-1 flex! items-start bg-transparent! px-4 py-4 text-left hover:bg-surface-3/50 sm:px-5">
+                {({ isExpanded }) => (
+                  <div className="flex w-full min-w-0 items-start justify-between gap-2">
+                    <div className="flex min-w-0 flex-col items-start gap-1 text-left">
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className={`h-2 w-2 shrink-0 rounded-full ${
+                            allChecked ? "bg-green-400" : "bg-surface-3"
+                          }`}
+                        />
+                        <span className="text-sm font-semibold text-text-primary">
+                          {meal.name}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 pl-5">
+                        {meal.target_time && (
+                          <span className="text-xs text-text-muted tabular-nums">
+                            {meal.target_time.slice(0, 5)}
+                          </span>
+                        )}
+                        <span className="text-xs text-text-muted tabular-nums">
+                          {checkedCount}/{meal.items.length} itens
+                        </span>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      size={18}
+                      className={[
+                        "mt-0.5 shrink-0 text-text-muted transition-transform duration-300",
+                        isExpanded ? "rotate-180" : "rotate-0",
+                      ].join(" ")}
+                      aria-hidden
+                    />
+                  </div>
+                )}
+              </Accordion.CustomTrigger>
+              <div className="flex shrink-0 flex-col justify-center gap-1 border-l border-border bg-surface-2 px-2 py-2 sm:px-2.5">
+                {!allChecked && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="whitespace-nowrap text-[11px] sm:text-xs"
+                    disabled={bulkBusy}
+                    leftIcon={<ListChecks size={14} />}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void handleMarkAllMealItems(meal);
+                    }}
+                  >
+                    Marcar todos
+                  </Button>
+                )}
+                {checkedCount > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="whitespace-nowrap text-[11px] sm:text-xs"
+                    disabled={bulkBusy}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void handleUnmarkAllMealItems(meal);
+                    }}
+                  >
+                    Desmarcar todos
+                  </Button>
+                )}
               </div>
-            </Accordion.Trigger>
+            </div>
             <Accordion.Content>
               <div className="-mx-4 -mt-3 -mb-3">
                 <div className="divide-y divide-border">
@@ -534,14 +683,26 @@ export function DailyChecklist({
       {/* Daily summary header */}
       {!hideDailySummary && (
         <div className="rounded-xl border border-border bg-surface-2 p-4">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Flame size={18} className="text-orange-400" />
               <h3 className="text-sm font-semibold text-text-primary">
                 Resumo do dia
               </h3>
             </div>
-            <WeeklyBufferBadge used={weeklyBufferUsed} total={weeklyBuffer} />
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="text-xs text-text-muted hover:text-red-400"
+                leftIcon={<Eraser size={14} />}
+                onClick={() => void handleClearTodayConsumption()}
+              >
+                Limpar hoje
+              </Button>
+              <WeeklyBufferBadge used={weeklyBufferUsed} total={weeklyBuffer} />
+            </div>
           </div>
 
           {/* Kcal progress bar */}

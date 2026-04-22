@@ -9,12 +9,25 @@ import {
   IntegerSlider,
   Checklist,
   CompletionToggle,
+  PointsBadge,
+  type BadgeVariant,
 } from '@phfront/millennium-ui';
-import { formatScore, getScoreColor, maxPossiblePointsForTracker, calculatePoints } from '@/lib/daily-goals/scoring';
+import { maxPossiblePointsForTracker } from '@/lib/daily-goals/scoring';
 import { getGoalValueForDate } from '@/lib/daily-goals/goal-history';
 import type { Tracker, Log } from '@/types/daily-goals';
 
 const NUMERIC_LOG_DEBOUNCE_MS = 500;
+
+/** Cor do badge: verde = recompensa (pontos positivos na meta), vermelho = penalidade. */
+function pointsBadgeVariant(tracker: Tracker, maxPoints: number): BadgeVariant {
+  if (maxPoints <= 0) return 'muted';
+  if (tracker.type === 'checklist') return 'success';
+  if (!tracker.scoring_enabled) return 'muted';
+  const pv = Number(tracker.points_value ?? 0);
+  if (pv < 0) return 'danger';
+  if (pv > 0) return 'success';
+  return 'muted';
+}
 
 interface TrackerCardProps {
   tracker: Tracker;
@@ -118,32 +131,46 @@ export function TrackerCard({
   }
 
   const checkedItems = log?.checked_items ?? tracker.checklist_items?.map(() => false) ?? [];
+  const maxPoints = maxPossiblePointsForTracker(tracker);
+  const showPointsInTitle = (tracker.scoring_enabled || maxPoints > 0) && maxPoints > 0;
 
   return (
     <Card
       className={[
-        'flex flex-col transition-all duration-200',
+        'flex flex-col justify-between transition-all duration-200',
         hideSettingsLink
           ? 'h-full min-h-0 gap-2 rounded-xl border-0 bg-surface-3/35 p-3 shadow-none ring-1 ring-inset ring-white/6'
           : 'gap-3 p-4',
         isSaving ? 'ring-1 ring-brand-primary/40' : '',
       ].join(' ')}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <h3 className="truncate text-sm font-semibold text-text-primary">{tracker.label}</h3>
+      {/* Header: nome trunca com …; pontos sempre visíveis à direita (não entram no truncate) */}
+      <div className="flex min-w-0 items-start gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <h3
+            className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary"
+            title={tracker.label}
+          >
+            {tracker.label}
+          </h3>
           {isSaving && (
             <span className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-brand-primary" />
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-2">
           {tracker.unit && !isSaving && (
             <span className="text-xs text-text-muted">{tracker.unit}</span>
           )}
           {isSaving && (
             <span className="text-xs font-medium text-brand-primary/70">salvando…</span>
           )}
+          {showPointsInTitle ? (
+            <PointsBadge
+              points={maxPoints}
+              variant={pointsBadgeVariant(tracker, maxPoints)}
+              aria-label={`Pontuação máxima: ${maxPoints} pontos`}
+            />
+          ) : null}
           {!hideSettingsLink && !tracker.deleted_at && (
             <Link
               href={`/daily-goals/config/${tracker.id}`}
@@ -165,6 +192,7 @@ export function TrackerCard({
             unit={tracker.unit}
             disabled={isReadonly}
             onChange={handleNumericChange}
+            showProgressBar={!hideSettingsLink}
           />
         )}
         {tracker.type === 'slider' && (
@@ -174,6 +202,7 @@ export function TrackerCard({
             unit={tracker.unit}
             disabled={isReadonly}
             onChange={handleNumericChange}
+            compact={false}
           />
         )}
         {tracker.type === 'checklist' && (
@@ -185,26 +214,16 @@ export function TrackerCard({
           />
         )}
         {tracker.type === 'boolean' && (
-          <CompletionToggle
-            checked={serverValue === 1}
-            disabled={isReadonly}
-            onCheckedChange={handleBooleanToggle}
-          />
+          <div className="flex h-full items-end">
+            <CompletionToggle
+              checked={serverValue === 1}
+              disabled={isReadonly}
+              onCheckedChange={handleBooleanToggle}
+              compact={hideSettingsLink}
+            />
+          </div>
         )}
       </div>
-
-      {/* Rodapé de pontuação */}
-      {(tracker.scoring_enabled || maxPossiblePointsForTracker(tracker) > 0) && (
-        <div className="flex items-center justify-between pt-2 border-t border-border">
-          <span className="text-xs text-text-muted">Pontuação</span>
-          <span className={`text-xs font-semibold tabular-nums ${getScoreColor(log?.points_earned ?? 0)}`}>
-            {log ? formatScore(log.points_earned) : readonly && viewDate 
-              ? formatScore(calculatePoints({ ...tracker, goal_value: effectiveGoalValue }, {}, effectiveGoalValue))
-              : `Vale ${formatScore(maxPossiblePointsForTracker(tracker))}`
-            }
-          </span>
-        </div>
-      )}
     </Card>
   );
 }

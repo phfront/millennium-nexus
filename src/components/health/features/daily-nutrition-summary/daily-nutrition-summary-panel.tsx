@@ -31,7 +31,7 @@ export function DailyNutritionSummaryPanel({
     todayTotals,
     weeklyBufferUsed,
     isLoading: logsLoading,
-  } = useDietHistory();
+  } = useDietHistory({ activePlanMeals: meals });
 
   const isLoading = planLoading || logsLoading;
   const weeklyBuffer = settings?.weekly_extra_buffer ?? 0;

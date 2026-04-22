@@ -1,4 +1,37 @@
-import type { Food, DietLog, MacroValues, DailyTotals, DietPlanMealWithItems } from '@/types/nutrition';
+import type {
+  Food,
+  DietLog,
+  MacroValues,
+  DailyTotals,
+  DietPlanMealWithItems,
+} from '@/types/nutrition';
+
+/** Nomes de alimento válidos num slot do plano (principal + substituições). */
+export function planSlotAllowedFoodNames(
+  item: DietPlanMealWithItems['items'][number],
+): Set<string> {
+  const names = new Set<string>();
+  if (item.food?.name) names.add(item.food.name);
+  for (const sub of item.substitutions ?? []) {
+    const n = sub.substitute_food?.name;
+    if (n) names.add(n);
+  }
+  return names;
+}
+
+/**
+ * Indica se o log conta para o resumo quando se filtra pelo plano ativo.
+ * Extras contam sempre; demais só se baterem num slot (refeição + nome do alimento).
+ */
+export function dietLogMatchesActivePlan(
+  log: DietLog,
+  meals: DietPlanMealWithItems[],
+): boolean {
+  if (log.is_extra) return true;
+  const meal = meals.find((m) => m.name === log.meal_name);
+  if (!meal) return false;
+  return meal.items.some((item) => planSlotAllowedFoodNames(item).has(log.food_name));
+}
 
 /**
  * Calcula macros proporcionais à quantidade em gramas.
@@ -60,9 +93,17 @@ export function sumPlannedKcalFromMeals(meals: DietPlanMealWithItems[]): number 
 
 /**
  * Totaliza macros de uma lista de logs de dieta.
+ * Com `planMeals` não vazio, ignora logs órfãos (removidos do plano mas ainda na BD).
  */
-export function calcDailyTotals(logs: DietLog[], date: string): DailyTotals {
-  const dayLogs = logs.filter((l) => l.logged_date === date);
+export function calcDailyTotals(
+  logs: DietLog[],
+  date: string,
+  planMeals?: DietPlanMealWithItems[],
+): DailyTotals {
+  let dayLogs = logs.filter((l) => l.logged_date === date);
+  if (planMeals && planMeals.length > 0) {
+    dayLogs = dayLogs.filter((l) => dietLogMatchesActivePlan(l, planMeals));
+  }
   const totals: DailyTotals = {
     logged_date: date,
     kcal: 0,

@@ -11,9 +11,11 @@ const COLORS = {
 
 interface MacroBreakdownChartProps {
   totals: DailyTotals;
+  /** Título do cartão (ex.: dia selecionado no histórico). */
+  title?: string;
 }
 
-export function MacroBreakdownChart({ totals }: MacroBreakdownChartProps) {
+export function MacroBreakdownChart({ totals, title = 'Macros do dia' }: MacroBreakdownChartProps) {
   const data = [
     { name: 'Proteína', value: Math.round(totals.protein), color: COLORS.protein },
     { name: 'Carboidratos', value: Math.round(totals.carbs), color: COLORS.carbs },
@@ -32,7 +34,7 @@ export function MacroBreakdownChart({ totals }: MacroBreakdownChartProps) {
 
   return (
     <div className="p-4 bg-surface-2 rounded-xl border border-border">
-      <h3 className="text-sm font-semibold text-text-primary mb-3">Macros do dia</h3>
+      <h3 className="text-sm font-semibold text-text-primary mb-3">{title}</h3>
       <div className="flex items-center gap-4">
         <div className="w-32 h-32">
           <ResponsiveContainer width="100%" height="100%">

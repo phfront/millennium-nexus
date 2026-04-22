@@ -30,6 +30,7 @@ type DietHistoryStore = DietHistoryScope & {
   ) => Promise<DietLog>;
   uncheckLog: (logId: string) => Promise<void>;
   addExtraConsumption: (food: Food, quantityG: number, mealName?: string) => Promise<DietLog>;
+  clearDietLogsForDate: (loggedDate: string) => Promise<void>;
 };
 
 const emptyScope: DietHistoryScope = {
@@ -129,5 +130,20 @@ export const useDietHistoryStore = create<DietHistoryStore>((set, get) => ({
 
   addExtraConsumption: async (food, quantityG, mealName = 'Extra') => {
     return get().checkMealItem(mealName, food, quantityG, true);
+  },
+
+  clearDietLogsForDate: async (loggedDate) => {
+    const { userId } = get();
+    if (!userId) throw new Error('Não autenticado');
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('diet_logs')
+      .delete()
+      .eq('user_id', userId)
+      .eq('logged_date', loggedDate);
+    if (error) throw new Error(error.message);
+    set((state) => ({
+      logs: state.logs.filter((l) => l.logged_date !== loggedDate),
+    }));
   },
 }));
