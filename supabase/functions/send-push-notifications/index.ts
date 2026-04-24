@@ -2,6 +2,8 @@
  * Edge Function: send-push-notifications
  *
  * Disparada via cron a cada minuto pelo pg_cron do Supabase.
+ * I/O: uma leitura de `push_subscriptions` no início; finance/nutrição só
+ * consideram utilizadores com push; learning usa RPC `fn_next_incomplete_learning_plan_days`.
  * 1) Daily Goals: regras em `tracker_notifications` (horário local do utilizador).
  * 2) Nexus Finance: despesas com vencimento — `finance_user_settings` define
  *    quantos dias antes avisar e a hora do push; dedupe em `finance_expense_reminder_sent`.
@@ -17,6 +19,9 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import webPush from 'npm:web-push';
+
+/** Cliente sem `Database` gerado — evita `never` nas respostas `.from()` / `.rpc()`. */
+type SupabaseServiceClient = ReturnType<typeof createClient<any>>;
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -104,6 +109,16 @@ function getZonedClock(
   }
 }
 
+function groupSubscriptionsByUser(subs: PushSubscription[]): Map<string, PushSubscription[]> {
+  const m = new Map<string, PushSubscription[]>();
+  for (const s of subs) {
+    const arr = m.get(s.user_id) ?? [];
+    arr.push(s);
+    m.set(s.user_id, arr);
+  }
+  return m;
+}
+
 function shouldFire(
   notif: TrackerNotification,
   clock: { hour: number; minute: number; hm: string; totalMinutes: number },
@@ -135,8 +150,9 @@ function shouldFire(
 // Learning — lembretes de planos de aprendizado ativos
 // ---------------------------------------------------------------------------
 async function sendLearningPlanReminders(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseServiceClient,
   now: Date,
+  subscriptionsByUser: Map<string, PushSubscription[]>,
 ): Promise<{ sent: number; expired: number; checked: number }> {
   const { data: notifications, error } = await supabase
     .from('learning_plan_notifications')
@@ -154,7 +170,7 @@ async function sendLearningPlanReminders(
     return { sent: 0, expired: 0, checked: 0 };
   }
 
-  const notifList = (notifications ?? []) as LearningPlanNotification[];
+  const notifList = (notifications ?? []) as unknown as LearningPlanNotification[];
   if (notifList.length === 0) return { sent: 0, expired: 0, checked: 0 };
 
   const ownerIds = [...new Set(notifList.map((n) => n.learning_plans.user_id))];
@@ -184,28 +200,36 @@ async function sendLearningPlanReminders(
 
   // Fetch next pending day for each plan
   const planIds = [...new Set(firing.map((n) => n.plan_id))];
-  const { data: dayRows } = await supabase
-    .from('learning_plan_days')
-    .select('id, plan_id, day_number, title')
-    .in('plan_id', planIds)
-    .eq('is_completed', false)
-    .order('day_number', { ascending: true });
+  const { data: dayRows, error: dayRpcErr } = await supabase.rpc(
+    'fn_next_incomplete_learning_plan_days',
+    { p_plan_ids: planIds },
+  );
+
+  if (dayRpcErr) {
+    console.error('RPC fn_next_incomplete_learning_plan_days:', dayRpcErr);
+    return { sent: 0, expired: 0, checked: notifList.length };
+  }
+
+  type NextDayRow = {
+    plan_id: string;
+    day_id: string;
+    day_number: number;
+    title: string | null;
+  };
 
   const nextDayByPlan = new Map<string, { id: string; day_number: number; title: string | null }>();
-  for (const d of dayRows ?? []) {
-    const pid = d.plan_id as string;
-    if (!nextDayByPlan.has(pid)) {
-      nextDayByPlan.set(pid, { id: d.id as string, day_number: d.day_number as number, title: d.title as string | null });
-    }
+  for (const d of (dayRows as NextDayRow[] | null) ?? []) {
+    nextDayByPlan.set(d.plan_id, {
+      id: d.day_id,
+      day_number: d.day_number,
+      title: d.title,
+    });
   }
 
   const userIds = [...new Set(firing.map((n) => n.learning_plans.user_id))];
-  const { data: subs } = await supabase
-    .from('push_subscriptions')
-    .select('user_id, endpoint, p256dh, auth')
-    .in('user_id', userIds);
-
-  const subscriptions = (subs ?? []) as PushSubscription[];
+  const subscriptions = userIds.flatMap(
+    (uid) => subscriptionsByUser.get(uid) ?? [],
+  ) as PushSubscription[];
   let sent = 0;
   let expired = 0;
 
@@ -319,14 +343,11 @@ function normalizeReminderOffsets(raw: number[] | null | undefined): number[] {
 }
 
 async function sendFinanceExpenseReminders(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseServiceClient,
   now: Date,
+  subUserIds: string[],
+  subscriptionsByUser: Map<string, PushSubscription[]>,
 ): Promise<{ sent: number; expired: number; candidates: number }> {
-  const { data: subsRows } = await supabase
-    .from('push_subscriptions')
-    .select('user_id');
-
-  const subUserIds = [...new Set((subsRows ?? []).map((r: { user_id: string }) => r.user_id))];
   if (subUserIds.length === 0) return { sent: 0, expired: 0, candidates: 0 };
 
   const { data: settingsRows, error: setErr } = await supabase
@@ -457,12 +478,9 @@ async function sendFinanceExpenseReminders(
   let sent = 0;
   let expired = 0;
 
-  const { data: allSubs } = await supabase
-    .from('push_subscriptions')
-    .select('user_id, endpoint, p256dh, auth')
-    .in('user_id', eligibleIds);
-
-  const subscriptions = (allSubs ?? []) as PushSubscription[];
+  const subscriptions = eligibleIds.flatMap(
+    (uid) => subscriptionsByUser.get(uid) ?? [],
+  ) as PushSubscription[];
 
   for (const c of all) {
     const tz = tzByUser.get(c.userId) ?? defaultTz;
@@ -537,8 +555,36 @@ Deno.serve(async () => {
 
   webPush.setVapidDetails(vapidSubject, vapidPublic, vapidPrivate);
 
-  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+  const supabase: SupabaseServiceClient = createClient(supabaseUrl, supabaseServiceRoleKey);
   const now      = new Date();
+
+  const { data: allSubRows, error: subErr } = await supabase
+    .from('push_subscriptions')
+    .select('user_id, endpoint, p256dh, auth');
+
+  if (subErr) {
+    console.error('Erro push_subscriptions:', subErr);
+    return new Response(JSON.stringify({ error: subErr.message }), { status: 500 });
+  }
+
+  const allSubscriptions = (allSubRows ?? []) as PushSubscription[];
+  const subscriptionsByUser = groupSubscriptionsByUser(allSubscriptions);
+
+  if (allSubscriptions.length === 0) {
+    return new Response(
+      JSON.stringify({
+        sent: 0,
+        expired: 0,
+        checked: 0,
+        learning_checked: 0,
+        finance_candidates: 0,
+        nutrition_checked: 0,
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
+  const pushUserIds = [...subscriptionsByUser.keys()];
 
   // Busca todas as notificações habilitadas de trackers ativos
   const { data: notifications, error: notifError } = await supabase
@@ -557,7 +603,7 @@ Deno.serve(async () => {
     return new Response(JSON.stringify({ error: notifError.message }), { status: 500 });
   }
 
-  const notifList = (notifications ?? []) as TrackerNotification[];
+  const notifList = (notifications ?? []) as unknown as TrackerNotification[];
   const ownerIds = [...new Set(notifList.map((n) => n.trackers.user_id))];
 
   /** Alinhado ao default da migration `006_user_timezone.sql`. */
@@ -592,14 +638,10 @@ Deno.serve(async () => {
   let expired = 0;
 
   if (firing.length > 0) {
-    const userIds = [...new Set(firing.map((n) => n.trackers.user_id))];
-
-    const { data: subs } = await supabase
-      .from('push_subscriptions')
-      .select('user_id, endpoint, p256dh, auth')
-      .in('user_id', userIds);
-
-    const subscriptions = (subs ?? []) as PushSubscription[];
+    const dgUserIds = new Set(firing.map((n) => n.trackers.user_id));
+    const subscriptions = [...dgUserIds].flatMap(
+      (uid) => subscriptionsByUser.get(uid) ?? [],
+    ) as PushSubscription[];
 
     for (const notif of firing) {
       const userId  = notif.trackers.user_id;
@@ -631,15 +673,25 @@ Deno.serve(async () => {
     }
   }
 
-  const learning = await sendLearningPlanReminders(supabase, now);
+  const learning = await sendLearningPlanReminders(supabase, now, subscriptionsByUser);
   sent += learning.sent;
   expired += learning.expired;
 
-  const finance = await sendFinanceExpenseReminders(supabase, now);
+  const finance = await sendFinanceExpenseReminders(
+    supabase,
+    now,
+    pushUserIds,
+    subscriptionsByUser,
+  );
   sent += finance.sent;
   expired += finance.expired;
 
-  const nutrition = await sendNutritionReminders(supabase, now);
+  const nutrition = await sendNutritionReminders(
+    supabase,
+    now,
+    pushUserIds,
+    subscriptionsByUser,
+  );
   sent += nutrition.sent;
   expired += nutrition.expired;
 
@@ -664,15 +716,20 @@ Deno.serve(async () => {
 // Nutrition — lembretes de hidratação e checklist de refeições
 // ---------------------------------------------------------------------------
 async function sendNutritionReminders(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseServiceClient,
   now: Date,
+  pushUserIds: string[],
+  subscriptionsByUser: Map<string, PushSubscription[]>,
 ): Promise<{ sent: number; expired: number; checked: number }> {
-  // Busca todos os users com diet_settings (opt-in ao módulo de nutrição)
+  if (pushUserIds.length === 0) return { sent: 0, expired: 0, checked: 0 };
+
+  // Só utilizadores com subscrição push (evita full scan de diet_settings)
   const { data: settingsRows, error: settingsErr } = await supabase
     .from('diet_settings')
     .select(
       'user_id, daily_water_target_ml, meal_reminder_push_enabled, meal_reminder_lead_minutes',
-    );
+    )
+    .in('user_id', pushUserIds);
 
   if (settingsErr || !settingsRows?.length) {
     if (settingsErr) console.error('Erro diet_settings:', settingsErr);
@@ -705,13 +762,9 @@ async function sendNutritionReminders(
     tzByUser.set(id, tz || defaultTz);
   }
 
-  // Busca push subscriptions
-  const { data: subsRows } = await supabase
-    .from('push_subscriptions')
-    .select('user_id, endpoint, p256dh, auth')
-    .in('user_id', userIds);
-
-  const subscriptions = (subsRows ?? []) as PushSubscription[];
+  const subscriptions = userIds.flatMap(
+    (uid) => subscriptionsByUser.get(uid) ?? [],
+  ) as PushSubscription[];
   if (subscriptions.length === 0) return { sent: 0, expired: 0, checked: settingsRows.length };
 
   const usersWithSub = new Set(subscriptions.map((s) => s.user_id));
