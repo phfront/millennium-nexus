@@ -4,8 +4,8 @@ import { getUser, getUserProfile } from '@/lib/auth';
 import { UserProvider } from '@/components/providers/UserProvider';
 import { FinanceSpreadsheetSettingsProvider } from '@/contexts/FinanceSpreadsheetSettingsContext';
 import { ModuleSidebar } from '@/components/finance/shell/ModuleSidebar';
-import { ModuleBottomNav } from '@/components/finance/shell/ModuleBottomNav';
 import { ModuleHeader } from '@/components/finance/shell/ModuleHeader';
+import { MobileSidebarProvider } from '@/components/shell/MobileSidebarContext';
 
 export const metadata: Metadata = {
   title: 'Finanças — Millennium Nexus',
@@ -24,16 +24,17 @@ export default async function FinanceLayout({ children }: { children: React.Reac
   return (
     <UserProvider user={user} profile={profile}>
       <FinanceSpreadsheetSettingsProvider>
-        <div className="flex h-screen overflow-hidden bg-surface-1">
-          <ModuleSidebar />
-          <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-            <ModuleHeader />
-            <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
-              {children}
-            </main>
-            <ModuleBottomNav />
+        <MobileSidebarProvider>
+          <div className="flex h-screen overflow-hidden bg-surface-1">
+            <ModuleSidebar />
+            <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+              <ModuleHeader />
+              <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-6">
+                {children}
+              </main>
+            </div>
           </div>
-        </div>
+        </MobileSidebarProvider>
       </FinanceSpreadsheetSettingsProvider>
     </UserProvider>
   );

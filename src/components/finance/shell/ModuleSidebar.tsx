@@ -1,8 +1,9 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { Sidebar, NavItem, Divider } from '@phfront/millennium-ui';
-import { BrandLogo } from '@/components/shell/BrandLogo';
+import { NavItem, Divider } from '@phfront/millennium-ui';
+import { ModuleSidebarShell } from '@/components/shell/ModuleSidebarShell';
+import { SidebarBrandHeader } from '@/components/shell/SidebarBrandHeader';
 import {
   LayoutDashboard,
   TrendingUp,
@@ -25,27 +26,51 @@ const NAV_LINKS = [
   { href: '/finance/history', icon: <History size={18} />, label: 'Histórico' },
 ];
 
-export function ModuleSidebar() {
+function SidebarBody({ onClose }: { onClose: () => void }) {
   const pathname = usePathname();
 
-  const logo = <BrandLogo size={32} />;
-
-  const links = NAV_LINKS.map((l) => ({ ...l, isActive: pathname === l.href }));
-
-  const footer = (
-    <div className="flex flex-col gap-1">
-      <NavItem
-        href="/finance/settings"
-        icon={<SlidersHorizontal size={18} />}
-        label="Configurações"
-        isActive={pathname === '/finance/settings'}
-      />
-      <Divider />
-      <NavItem href="/" icon={<Home size={18} />} label="Voltar ao Portal" isActive={false} />
-    </div>
-  );
-
   return (
-    <Sidebar logo={logo} links={links} footer={footer} className="hidden md:flex" />
+    <>
+      <SidebarBrandHeader onClose={onClose} />
+
+      <div className="flex-1 overflow-y-auto px-2 py-3 flex flex-col gap-1">
+        {NAV_LINKS.map((l) => (
+          <NavItem
+            key={l.href}
+            href={l.href}
+            icon={l.icon}
+            label={l.label}
+            isActive={pathname === l.href}
+            onClick={onClose}
+          />
+        ))}
+      </div>
+
+      <div className="shrink-0 border-t border-border px-2 py-3 flex flex-col gap-1">
+        <NavItem
+          href="/finance/settings"
+          icon={<SlidersHorizontal size={18} />}
+          label="Configurações"
+          isActive={pathname === '/finance/settings'}
+          onClick={onClose}
+        />
+        <Divider />
+        <NavItem
+          href="/"
+          icon={<Home size={18} />}
+          label="Voltar ao Portal"
+          isActive={false}
+          onClick={onClose}
+        />
+      </div>
+    </>
+  );
+}
+
+export function ModuleSidebar() {
+  return (
+    <ModuleSidebarShell drawerId="finance-module-sidebar">
+      {({ onClose }) => <SidebarBody onClose={onClose} />}
+    </ModuleSidebarShell>
   );
 }

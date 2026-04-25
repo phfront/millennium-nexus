@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { NavItem, Divider } from '@phfront/millennium-ui';
-import { BrandLogo } from '@/components/shell/BrandLogo';
-import { useMobileSidebar } from './MobileSidebarContext';
+import { ModuleSidebarShell } from '@/components/shell/ModuleSidebarShell';
+import { SidebarBrandHeader } from '@/components/shell/SidebarBrandHeader';
 import {
   PlusCircle, History, Settings, Home, Scale,
   UtensilsCrossed, Apple, ClipboardList, TrendingUp, SlidersHorizontal,
-  ChevronDown, ChevronUp, X,
+  ChevronDown, ChevronUp,
   HomeIcon,
   Bell,
 } from 'lucide-react';
@@ -33,7 +33,7 @@ const NUTRITION_CHILDREN = [
   { href: '/health/nutrition/settings', icon: <SlidersHorizontal size={18} />, label: 'Configurações' },
 ];
 
-function SidebarContent({ onClose }: { onClose?: () => void }) {
+function SidebarBody({ onClose }: { onClose: () => void }) {
   const pathname = usePathname();
   const isOnWeight = isWeightSectionPath(pathname);
   const isOnNutrition = pathname.startsWith('/health/nutrition');
@@ -50,16 +50,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
 
   return (
     <>
-      {/* Logo header */}
-      <div className="flex items-center h-16 px-4 border-b border-border gap-3 shrink-0">
-        <span className="shrink-0"><BrandLogo size={32} /></span>
-        <span className="font-bold text-text-primary truncate flex-1 text-sm">Nexus</span>
-        {onClose && (
-          <button onClick={onClose} className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-3 transition-colors cursor-pointer md:hidden">
-            <X size={18} />
-          </button>
-        )}
-      </div>
+      <SidebarBrandHeader onClose={onClose} />
 
       {/* Nav body */}
       <div className="flex-1 overflow-y-auto px-2 py-3 flex flex-col gap-1">
@@ -84,20 +75,27 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
           </span>
         </button>
 
-        {nutritionOpen && (
-          <div className="flex flex-col gap-0.5 ml-3 pl-3 border-l border-border/50">
-            {NUTRITION_CHILDREN.map((l) => (
-              <NavItem
-                key={l.href}
-                href={l.href}
-                icon={l.icon}
-                label={l.label}
-                isActive={pathname === l.href}
-                onClick={onClose}
-              />
-            ))}
+        <div
+          className={[
+            'grid transition-[grid-template-rows] duration-300 ease-out',
+            nutritionOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+          ].join(' ')}
+        >
+          <div className="overflow-hidden">
+            <div className="flex flex-col gap-0.5 ml-3 pl-3 border-l border-border/50 pt-1">
+              {NUTRITION_CHILDREN.map((l) => (
+                <NavItem
+                  key={l.href}
+                  href={l.href}
+                  icon={l.icon}
+                  label={l.label}
+                  isActive={pathname === l.href}
+                  onClick={onClose}
+                />
+              ))}
+            </div>
           </div>
-        )}
+        </div>
 
         <Divider className="my-2" />
 
@@ -122,20 +120,27 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
           </span>
         </button>
 
-        {weightOpen && (
-          <div className="flex flex-col gap-0.5 ml-3 pl-3 border-l border-border/50">
-            {WEIGHT_CHILDREN.map((l) => (
-              <NavItem
-                key={l.href}
-                href={l.href}
-                icon={l.icon}
-                label={l.label}
-                isActive={pathname === l.href}
-                onClick={onClose}
-              />
-            ))}
+        <div
+          className={[
+            'grid transition-[grid-template-rows] duration-300 ease-out',
+            weightOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+          ].join(' ')}
+        >
+          <div className="overflow-hidden">
+            <div className="flex flex-col gap-0.5 ml-3 pl-3 border-l border-border/50 pt-1">
+              {WEIGHT_CHILDREN.map((l) => (
+                <NavItem
+                  key={l.href}
+                  href={l.href}
+                  icon={l.icon}
+                  label={l.label}
+                  isActive={pathname === l.href}
+                  onClick={onClose}
+                />
+              ))}
+            </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Footer */}
@@ -147,36 +152,9 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
 }
 
 export function ModuleSidebar() {
-  const { isOpen, close } = useMobileSidebar();
-
   return (
-    <>
-      {/* Desktop sidebar */}
-      <nav
-        aria-label="Navegação principal"
-        className="hidden md:flex flex-col bg-surface-2 border-r border-border h-full w-60 shrink-0"
-      >
-        <SidebarContent />
-      </nav>
-
-      {/* Mobile drawer */}
-      {isOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex">
-          {/* Overlay */}
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={close}
-          />
-          {/* Panel */}
-          <nav
-            id="health-module-sidebar"
-            aria-label="Navegação principal"
-            className="relative flex flex-col bg-surface-2 h-full w-72 max-w-[85vw] shadow-2xl"
-          >
-            <SidebarContent onClose={close} />
-          </nav>
-        </div>
-      )}
-    </>
+    <ModuleSidebarShell drawerId="health-module-sidebar">
+      {({ onClose }) => <SidebarBody onClose={onClose} />}
+    </ModuleSidebarShell>
   );
 }

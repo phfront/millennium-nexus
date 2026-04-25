@@ -4,7 +4,7 @@ import { getUser, getUserProfile } from '@/lib/auth';
 import { UserProvider } from '@/components/providers/UserProvider';
 import { ModuleSidebar } from '@/components/health/shell/ModuleSidebar';
 import { ModuleHeader } from '@/components/health/shell/ModuleHeader';
-import { MobileSidebarProvider } from '@/components/health/shell/MobileSidebarContext';
+import { MobileSidebarProvider } from '@/components/shell/MobileSidebarContext';
 
 export const metadata: Metadata = {
   title: 'Saúde — Millennium Nexus',

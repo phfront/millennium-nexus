@@ -295,115 +295,161 @@ export function WidgetEditor({ allowedModuleSlugs }: WidgetEditorProps) {
                   gridRow: `${widget.y + 1} / span ${widget.h}`,
                 }}
               >
-                <Card className="h-full p-3 flex flex-col relative overflow-hidden">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-text-primary truncate">{widget.item.title}</p>
-                      <p className="text-xs text-text-muted truncate">{widget.item.description}</p>
+                <Card className="relative flex h-full flex-col overflow-hidden p-3">
+                  {/* Header: title + remove */}
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1 pr-1">
+                      <p className="truncate text-sm font-semibold text-text-primary">
+                        {widget.item.title}
+                      </p>
+                      <p className="truncate text-xs text-text-muted">
+                        {widget.item.description}
+                      </p>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="min-h-11"
+                    <button
+                      type="button"
                       aria-label={`Remover ${widget.item.title}`}
+                      title="Remover"
                       onClick={() => void setWidgetVisibility(widget.key, breakpoint, false)}
-                      leftIcon={<Trash2 size={14} />}
+                      className="-mt-1 -mr-1 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-400"
                     >
-                      Remover
-                    </Button>
+                      <Trash2 size={14} />
+                    </button>
                   </div>
 
-                  <div className="mt-2 flex flex-wrap items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="min-h-9 px-2"
-                      aria-label="Mover para a esquerda"
-                      disabled={
-                        tryMoveWidgetLayout(breakpoint, packedLayoutEntries, widget.key, 'left') === null
-                      }
-                      onClick={() => void moveWidget(widget.key, breakpoint, 'left')}
-                      leftIcon={<ChevronLeft size={14} />}
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="min-h-9 px-2"
-                      aria-label="Mover para cima"
-                      disabled={
-                        tryMoveWidgetLayout(breakpoint, packedLayoutEntries, widget.key, 'up') === null
-                      }
-                      onClick={() => void moveWidget(widget.key, breakpoint, 'up')}
-                      leftIcon={<ChevronUp size={14} />}
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="min-h-9 px-2"
-                      aria-label="Mover para a direita"
-                      disabled={
-                        tryMoveWidgetLayout(breakpoint, packedLayoutEntries, widget.key, 'right') === null
-                      }
-                      onClick={() => void moveWidget(widget.key, breakpoint, 'right')}
-                      leftIcon={<ChevronRight size={14} />}
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="min-h-9 px-2"
-                      aria-label="Mover para baixo"
-                      disabled={
-                        tryMoveWidgetLayout(breakpoint, packedLayoutEntries, widget.key, 'down') === null
-                      }
-                      onClick={() => void moveWidget(widget.key, breakpoint, 'down')}
-                      leftIcon={<ChevronDown size={14} />}
-                    />
-                  </div>
+                  {/* Single horizontal control row:
+                      [<<]  [- W +]  [↑/↓ d-pad]  [- H +]  [>>] */}
+                  {(() => {
+                    const upDisabled =
+                      tryMoveWidgetLayout(breakpoint, packedLayoutEntries, widget.key, 'up') === null;
+                    const downDisabled =
+                      tryMoveWidgetLayout(breakpoint, packedLayoutEntries, widget.key, 'down') === null;
+                    const leftDisabled =
+                      tryMoveWidgetLayout(breakpoint, packedLayoutEntries, widget.key, 'left') === null;
+                    const rightDisabled =
+                      tryMoveWidgetLayout(breakpoint, packedLayoutEntries, widget.key, 'right') === null;
+                    const edgeBtn =
+                      'flex h-12 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border bg-surface-2 text-text-secondary transition-colors hover:bg-surface-3 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface-2';
+                    const dpadBtn =
+                      'flex h-7 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-surface-2 text-text-secondary transition-colors hover:bg-surface-3 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface-2';
+                    const stepperBtn =
+                      'flex h-8 w-7 cursor-pointer items-center justify-center text-text-secondary transition-colors hover:bg-surface-3 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent';
 
-                  <div className="mt-auto pt-2 space-y-2">
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-text-muted">
-                      <span>{widget.w} coluna(s)</span>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={nextColDown === widget.w || nextColDown < minColsInSlot}
-                          onClick={() => void setWidgetSpan(widget.key, breakpoint, nextColDown, widget.h)}
+                    return (
+                      <div className="flex h-full flex-col justify-between items-center gap-1.5 pt-1">
+                        {/* Top: up arrow */}
+                        <button
+                          type="button"
+                          aria-label="Mover para cima"
+                          disabled={upDisabled}
+                          onClick={() => void moveWidget(widget.key, breakpoint, 'up')}
+                          className={dpadBtn}
                         >
-                          - coluna
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={nextColUp === widget.w}
-                          onClick={() => void setWidgetSpan(widget.key, breakpoint, nextColUp, widget.h)}
+                          <ChevronUp size={14} />
+                        </button>
+
+                        {/* Middle: left edge | stacked W/H steppers | right edge */}
+                        <div className="flex w-full items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            aria-label="Mover para a esquerda"
+                            disabled={leftDisabled}
+                            onClick={() => void moveWidget(widget.key, breakpoint, 'left')}
+                            className={edgeBtn}
+                          >
+                            <ChevronLeft size={18} />
+                          </button>
+
+                          <div className="flex flex-col items-center gap-1.5">
+                            {/* Width stepper */}
+                            <div className="inline-flex items-center overflow-hidden rounded-md border border-border bg-surface-2">
+                              <button
+                                type="button"
+                                aria-label="Diminuir largura"
+                                disabled={nextColDown === widget.w || nextColDown < minColsInSlot}
+                                onClick={() =>
+                                  void setWidgetSpan(widget.key, breakpoint, nextColDown, widget.h)
+                                }
+                                className={stepperBtn}
+                              >
+                                <span aria-hidden>−</span>
+                              </button>
+                              <span
+                                className="border-x border-border py-1 text-center text-xs font-medium tabular-nums text-text-primary"
+                                style={{ width: '80px' }}
+                              >
+                                {widget.w} {widget.w === 1 ? 'Coluna' : 'Colunas'}
+                              </span>
+                              <button
+                                type="button"
+                                aria-label="Aumentar largura"
+                                disabled={nextColUp === widget.w}
+                                onClick={() =>
+                                  void setWidgetSpan(widget.key, breakpoint, nextColUp, widget.h)
+                                }
+                                className={stepperBtn}
+                              >
+                                <span aria-hidden>+</span>
+                              </button>
+                            </div>
+
+                            {/* Height stepper */}
+                            <div className="inline-flex items-center overflow-hidden rounded-md border border-border bg-surface-2">
+                              <button
+                                type="button"
+                                aria-label="Diminuir altura"
+                                disabled={nextRowDown === widget.h || nextRowDown < minRowsInSlot}
+                                onClick={() =>
+                                  void setWidgetSpan(widget.key, breakpoint, widget.w, nextRowDown)
+                                }
+                                className={stepperBtn}
+                              >
+                                <span aria-hidden>−</span>
+                              </button>
+                              <span
+                                className="border-x border-border py-1 text-center text-xs font-medium tabular-nums text-text-primary"
+                                style={{ width: '80px' }}
+                              >
+                                {widget.h} {widget.h === 1 ? 'Linha' : 'Linhas'}
+                              </span>
+                              <button
+                                type="button"
+                                aria-label="Aumentar altura"
+                                disabled={nextRowUp === widget.h}
+                                onClick={() =>
+                                  void setWidgetSpan(widget.key, breakpoint, widget.w, nextRowUp)
+                                }
+                                className={stepperBtn}
+                              >
+                                <span aria-hidden>+</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            aria-label="Mover para a direita"
+                            disabled={rightDisabled}
+                            onClick={() => void moveWidget(widget.key, breakpoint, 'right')}
+                            className={edgeBtn}
+                          >
+                            <ChevronRight size={18} />
+                          </button>
+                        </div>
+
+                        {/* Bottom: down arrow */}
+                        <button
+                          type="button"
+                          aria-label="Mover para baixo"
+                          disabled={downDisabled}
+                          onClick={() => void moveWidget(widget.key, breakpoint, 'down')}
+                          className={dpadBtn}
                         >
-                          + coluna
-                        </Button>
+                          <ChevronDown size={14} />
+                        </button>
                       </div>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-text-muted">
-                      <span>{widget.h} linha(s)</span>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={nextRowDown === widget.h || nextRowDown < minRowsInSlot}
-                          onClick={() => void setWidgetSpan(widget.key, breakpoint, widget.w, nextRowDown)}
-                        >
-                          - linha
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={nextRowUp === widget.h}
-                          onClick={() => void setWidgetSpan(widget.key, breakpoint, widget.w, nextRowUp)}
-                        >
-                          + linha
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </Card>
               </div>
             );

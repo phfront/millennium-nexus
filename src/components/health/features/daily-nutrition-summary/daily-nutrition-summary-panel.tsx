@@ -71,7 +71,7 @@ export function DailyNutritionSummaryPanel({
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 flex-col gap-4",
+        "flex h-full min-h-0 flex-col gap-3 sm:gap-4",
         hasBackground
           ? "rounded-2xl border border-white/10 bg-surface-2/50 p-4 pb-5 shadow-sm ring-1 ring-inset ring-white/4"
           : "px-3 pt-3 pb-4"
@@ -83,8 +83,16 @@ export function DailyNutritionSummaryPanel({
         icon={<Flame className="h-3.5 w-3.5" aria-hidden />}
         title="Resumo do dia"
         subtitle="Calorias consumidas e macros do plano ativo."
-        trailing={<WeeklyBufferBadge used={weeklyBufferUsed} total={weeklyBuffer} />}
+        trailing={
+          <div className="hidden sm:block">
+            <WeeklyBufferBadge used={weeklyBufferUsed} total={weeklyBuffer} />
+          </div>
+        }
       />
+
+      <div className="-mt-2 flex shrink-0 justify-end sm:hidden">
+        <WeeklyBufferBadge used={weeklyBufferUsed} total={weeklyBuffer} />
+      </div>
 
       <section className="shrink-0">
         <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -113,7 +121,7 @@ export function DailyNutritionSummaryPanel({
       </section>
 
       <div className="grid min-h-0 flex-1 grid-cols-3 gap-2 pb-1 sm:gap-3 sm:pb-2">
-        <div className="flex min-h-18 min-w-0 flex-col items-center justify-center rounded-xl border border-white/6 bg-surface-3/80 px-2 py-3 text-center">
+        <div className="flex min-h-14 min-w-0 flex-col items-center justify-center rounded-xl border border-white/6 bg-surface-3/80 px-2 py-2 text-center sm:min-h-18 sm:py-3">
           <p className="text-[10px] font-medium uppercase tracking-wide text-text-muted">
             Proteína
           </p>
@@ -121,7 +129,7 @@ export function DailyNutritionSummaryPanel({
             {formatGrams(todayTotals.protein)}
           </p>
         </div>
-        <div className="flex min-h-18 min-w-0 flex-col items-center justify-center rounded-xl border border-white/6 bg-surface-3/80 px-2 py-3 text-center">
+        <div className="flex min-h-14 min-w-0 flex-col items-center justify-center rounded-xl border border-white/6 bg-surface-3/80 px-2 py-2 text-center sm:min-h-18 sm:py-3">
           <p className="text-[10px] font-medium uppercase tracking-wide text-text-muted">
             Carboidratos
           </p>
@@ -129,7 +137,7 @@ export function DailyNutritionSummaryPanel({
             {formatGrams(todayTotals.carbs)}
           </p>
         </div>
-        <div className="flex min-h-18 min-w-0 flex-col items-center justify-center rounded-xl border border-white/6 bg-surface-3/80 px-2 py-3 text-center">
+        <div className="flex min-h-14 min-w-0 flex-col items-center justify-center rounded-xl border border-white/6 bg-surface-3/80 px-2 py-2 text-center sm:min-h-18 sm:py-3">
           <p className="text-[10px] font-medium uppercase tracking-wide text-text-muted">
             Gordura
           </p>

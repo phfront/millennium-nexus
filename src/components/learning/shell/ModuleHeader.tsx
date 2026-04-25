@@ -1,9 +1,10 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { ArrowLeft, Home } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { Avatar } from '@phfront/millennium-ui';
 import { useCurrentUser } from '@/hooks/use-current-user';
+import { SidebarMenuButton } from '@/components/shell/SidebarMenuButton';
 
 const ROUTE_LABELS: Record<string, string> = {
   '/learning': 'Aprendizado',
@@ -50,13 +51,7 @@ export function ModuleHeader() {
           <ArrowLeft size={22} strokeWidth={2} />
         </a>
       ) : (
-        <a
-          href="/"
-          aria-label="Voltar ao portal"
-          className="shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-3 transition-colors cursor-pointer inline-flex"
-        >
-          <Home size={22} strokeWidth={2} />
-        </a>
+        <SidebarMenuButton controls="learning-module-sidebar" />
       )}
       <h1 className="flex-1 min-w-0 text-sm font-semibold text-text-primary text-center truncate px-1">
         {pageLabel}

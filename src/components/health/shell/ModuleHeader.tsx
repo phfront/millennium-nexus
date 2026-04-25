@@ -1,10 +1,9 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { Menu } from 'lucide-react';
 import { Avatar } from '@phfront/millennium-ui';
 import { useCurrentUser } from '@/hooks/use-current-user';
-import { useMobileSidebar } from './MobileSidebarContext';
+import { SidebarMenuButton } from '@/components/shell/SidebarMenuButton';
 
 const ROUTE_LABELS: Record<string, string> = {
   '/health/peso': 'Saúde',
@@ -23,20 +22,10 @@ export function ModuleHeader() {
   const user = useCurrentUser();
   const profile = user?.profile ?? null;
   const pageLabel = ROUTE_LABELS[pathname] ?? 'Health';
-  const { isOpen, open } = useMobileSidebar();
 
   return (
     <header className="md:hidden flex items-center gap-1 px-3 h-14 pt-[env(safe-area-inset-top,0px)] bg-surface-2 border-b border-border shrink-0">
-      <button
-        type="button"
-        onClick={open}
-        aria-label="Abrir menu de navegação"
-        aria-expanded={isOpen}
-        aria-controls="health-module-sidebar"
-        className="shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-3 transition-colors cursor-pointer inline-flex"
-      >
-        <Menu size={22} strokeWidth={2} />
-      </button>
+      <SidebarMenuButton controls="health-module-sidebar" />
       <h1 className="flex-1 min-w-0 text-sm font-semibold text-text-primary text-center truncate px-1">
         {pageLabel}
       </h1>

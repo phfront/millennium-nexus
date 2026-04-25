@@ -1,9 +1,10 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { Home, SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
 import { Avatar } from '@phfront/millennium-ui';
 import { useCurrentUser } from '@/hooks/use-current-user';
+import { SidebarMenuButton } from '@/components/shell/SidebarMenuButton';
 
 const ROUTE_LABELS: Record<string, string> = {
   '/finance': 'Finance',
@@ -24,13 +25,7 @@ export function ModuleHeader() {
 
   return (
     <header className="md:hidden flex items-center gap-1 px-3 h-14 pt-[env(safe-area-inset-top,0px)] bg-surface-2 border-b border-border shrink-0">
-      <a
-        href="/"
-        aria-label="Voltar ao portal"
-        className="shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-3 transition-colors cursor-pointer inline-flex"
-      >
-        <Home size={22} strokeWidth={2} />
-      </a>
+      <SidebarMenuButton controls="finance-module-sidebar" />
       <h1 className="flex-1 min-w-0 text-sm font-semibold text-text-primary text-center truncate px-1">
         {pageLabel}
       </h1>

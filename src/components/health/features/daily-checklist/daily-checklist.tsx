@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Check, Plus, Flame, ChevronDown, Trash2, Eraser, ListChecks } from "lucide-react";
-import { Accordion, Button, Skeleton, useToast } from "@phfront/millennium-ui";
+import { Accordion, Button, Modal, Skeleton, useToast } from "@phfront/millennium-ui";
 import { useDietPlan } from "@/hooks/health/use-diet-plan";
 import { useDietHistory, type ChecklistPlanItem } from "@/hooks/health/use-diet-history";
 import type { DietLog, DietPlanMealWithItems, Food, FoodSubstitution } from "@/types/nutrition";
@@ -64,6 +64,10 @@ export function DailyChecklist({
   const [showExtra, setShowExtra] = useState(false);
   const [expandedMeal, setExpandedMeal] = useState<string | null>(null);
   const [mealBulkLoadingId, setMealBulkLoadingId] = useState<string | null>(null);
+  const [bulkConfirm, setBulkConfirm] = useState<{
+    action: "mark" | "unmark";
+    meal: (typeof meals)[number];
+  } | null>(null);
 
   const isLoading = planLoading || logsLoading;
 
@@ -382,37 +386,73 @@ export function DailyChecklist({
                   </div>
                 )}
               </Accordion.CustomTrigger>
-              <div className="flex shrink-0 flex-col justify-center gap-1 border-l border-border bg-surface-2 px-2 py-2 sm:px-2.5">
+              <div className="flex shrink-0 flex-col items-center justify-center gap-1 border-l border-border bg-surface-2 px-1.5 py-2 sm:px-2.5">
                 {!allChecked && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="whitespace-nowrap text-[11px] sm:text-xs"
-                    disabled={bulkBusy}
-                    leftIcon={<ListChecks size={14} />}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      void handleMarkAllMealItems(meal);
-                    }}
-                  >
-                    Marcar todos
-                  </Button>
+                  <>
+                    {/* Icon-only on mobile */}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="sm:hidden! p-1.5!"
+                      disabled={bulkBusy}
+                      title="Marcar todos"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setBulkConfirm({ action: "mark", meal });
+                      }}
+                    >
+                      <ListChecks size={16} />
+                    </Button>
+                    {/* Text on sm+ */}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="hidden! sm:flex! whitespace-nowrap text-xs"
+                      disabled={bulkBusy}
+                      leftIcon={<ListChecks size={14} />}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setBulkConfirm({ action: "mark", meal });
+                      }}
+                    >
+                      Marcar todos
+                    </Button>
+                  </>
                 )}
                 {checkedCount > 0 && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="whitespace-nowrap text-[11px] sm:text-xs"
-                    disabled={bulkBusy}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      void handleUnmarkAllMealItems(meal);
-                    }}
-                  >
-                    Desmarcar todos
-                  </Button>
+                  <>
+                    {/* Icon-only on mobile */}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="sm:hidden! p-1.5!"
+                      disabled={bulkBusy}
+                      title="Desmarcar todos"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setBulkConfirm({ action: "unmark", meal });
+                      }}
+                    >
+                      <Eraser size={16} />
+                    </Button>
+                    {/* Text on sm+ */}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="hidden! sm:flex! whitespace-nowrap text-xs"
+                      disabled={bulkBusy}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setBulkConfirm({ action: "unmark", meal });
+                      }}
+                    >
+                      Desmarcar todos
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -755,7 +795,7 @@ export function DailyChecklist({
 
       {isWidget ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-3 py-3 sm:px-4 sm:py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-auto px-3 py-3 sm:overscroll-y-contain sm:px-4 sm:py-4">
             <div className="flex flex-col gap-4">
               {mealsAccordion}
               {renderExtraCard()}
@@ -772,6 +812,52 @@ export function DailyChecklist({
       {showExtra && (
         <ExtraConsumptionModal onClose={() => setShowExtra(false)} />
       )}
+
+      <Modal
+        isOpen={bulkConfirm !== null}
+        onClose={() => setBulkConfirm(null)}
+        title={
+          bulkConfirm?.action === "mark"
+            ? "Marcar todos os itens?"
+            : "Desmarcar todos os itens?"
+        }
+        size="sm"
+      >
+        <>
+          <p className="text-sm text-text-muted">
+            {bulkConfirm?.action === "mark"
+              ? `Todos os itens do plano de "${bulkConfirm?.meal.name}" serão marcados como consumidos.`
+              : `Todos os itens marcados de "${bulkConfirm?.meal.name}" serão removidos do registro de hoje.`}
+          </p>
+          <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-border">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setBulkConfirm(null)}
+              disabled={mealBulkLoadingId !== null}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant={bulkConfirm?.action === "mark" ? "primary" : "danger"}
+              disabled={mealBulkLoadingId !== null}
+              onClick={async () => {
+                if (!bulkConfirm) return;
+                const { action, meal } = bulkConfirm;
+                setBulkConfirm(null);
+                if (action === "mark") {
+                  await handleMarkAllMealItems(meal);
+                } else {
+                  await handleUnmarkAllMealItems(meal);
+                }
+              }}
+            >
+              {bulkConfirm?.action === "mark" ? "Marcar todos" : "Desmarcar todos"}
+            </Button>
+          </div>
+        </>
+      </Modal>
     </div>
   );
 }
