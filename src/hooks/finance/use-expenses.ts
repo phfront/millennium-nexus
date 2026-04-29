@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useUserStore } from '@/store/user-store';
 import { usePlanningHorizonListener } from '@/hooks/finance/use-planning-horizon-listener';
 import { buildMonthRange, monthInputValueToFirstDay, toMonthDate } from '@/lib/finance/finance';
-import { getLocalDateStr } from '@/lib/daily-goals/timezone';
+import { getLocalDateStr } from '@/lib/habits-goals/timezone';
 import type { ExpenseCategory, ExpenseItem, ExpenseEntry } from '@/types/finance';
 
 function normalizeMonthKey(m: string): string {

@@ -5,7 +5,7 @@ import { Plus, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { Modal, Input, Button, Skeleton, useToast, ToggleStatusBadge } from '@phfront/millennium-ui';
 import { useReceivables } from '@/hooks/finance/use-receivables';
 import { useUserStore } from '@/store/user-store';
-import { getLocalDateStr } from '@/lib/daily-goals/timezone';
+import { getLocalDateStr } from '@/lib/habits-goals/timezone';
 import { formatBRL, formatDate, formatMonth } from '@/lib/finance/format';
 import { receivableIsFullyPaid, receivableOutstanding } from '@/lib/finance/finance';
 import type { Receivable } from '@/types/finance';

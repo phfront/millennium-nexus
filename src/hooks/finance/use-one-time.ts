@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useUserStore } from '@/store/user-store';
 import { usePlanningHorizonListener } from '@/hooks/finance/use-planning-horizon-listener';
 import { normalizeExpenseMonthKey } from '@/lib/finance/finance';
-import { getLocalDateStr } from '@/lib/daily-goals/timezone';
+import { getLocalDateStr } from '@/lib/habits-goals/timezone';
 import type { OneTimeEntry } from '@/types/finance';
 
 function mapRow(row: Record<string, unknown>): OneTimeEntry {

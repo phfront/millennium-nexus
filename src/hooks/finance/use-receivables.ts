@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useUserStore } from '@/store/user-store';
 import { receivableIsFullyPaid } from '@/lib/finance/finance';
-import { getLocalDateStr } from '@/lib/daily-goals/timezone';
+import { getLocalDateStr } from '@/lib/habits-goals/timezone';
 import type { Receivable } from '@/types/finance';
 
 function normalizeReceivable(raw: Record<string, unknown>): Receivable {

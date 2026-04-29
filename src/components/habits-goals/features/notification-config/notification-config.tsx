@@ -3,15 +3,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Switch, Button, TimePicker } from '@phfront/millennium-ui';
-import { Bell, BellOff } from 'lucide-react';
-import type { LearningPlanNotification } from '@/types/learning';
-import type { NotificationType } from '@/types/habits-goals';
+import type { Tracker, TrackerNotification, NotificationType } from '@/types/habits-goals';
 
-interface Props {
-  planId: string;
+interface NotificationConfigProps {
+  tracker: Tracker;
 }
 
-function comparableNotification(n: Partial<LearningPlanNotification>): string {
+/** Forma estável para comparar alterações (sem id / created_at). */
+function comparableNotification(n: Partial<TrackerNotification>): string {
   const type = n.type ?? 'fixed_time';
   const enabled = n.enabled ?? true;
   let fields: Record<string, unknown> = { type, enabled };
@@ -51,18 +50,24 @@ function comparableNotification(n: Partial<LearningPlanNotification>): string {
   return JSON.stringify(fields);
 }
 
-function defaultNotification(planId: string): Partial<LearningPlanNotification> {
+function defaultNotification(trackerId: string): Partial<TrackerNotification> {
   return {
-    plan_id: planId,
+    tracker_id: trackerId,
     type: 'fixed_time',
     enabled: true,
     scheduled_times: ['08:00'],
   };
 }
 
-export function LearningPlanNotificationConfig({ planId }: Props) {
-  const [notification, setNotification] = useState<Partial<LearningPlanNotification>>(() =>
-    defaultNotification(planId),
+const PERIOD_BADGE: Record<string, string> = {
+  weekly: 'Semanal',
+  monthly: 'Mensal',
+  custom: 'Personalizado',
+};
+
+export function NotificationConfig({ tracker }: NotificationConfigProps) {
+  const [notification, setNotification] = useState<Partial<TrackerNotification>>(() =>
+    defaultNotification(tracker.id),
   );
   const [isLoading, setIsLoading] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -72,21 +77,21 @@ export function LearningPlanNotificationConfig({ planId }: Props) {
     let cancelled = false;
     const supabase = createClient();
     setBaselineStr(null);
-    setNotification(defaultNotification(planId));
+    setNotification(defaultNotification(tracker.id));
 
     supabase
-      .from('learning_plan_notifications')
+      .from('tracker_notifications')
       .select('*')
-      .eq('plan_id', planId)
+      .eq('tracker_id', tracker.id)
       .maybeSingle()
       .then(({ data }) => {
         if (cancelled) return;
         if (data) {
-          const row = data as LearningPlanNotification;
+          const row = data as TrackerNotification;
           setNotification(row);
           setBaselineStr(comparableNotification(row));
         } else {
-          const d = defaultNotification(planId);
+          const d = defaultNotification(tracker.id);
           setNotification(d);
           setBaselineStr(comparableNotification(d));
         }
@@ -95,7 +100,7 @@ export function LearningPlanNotificationConfig({ planId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [planId]);
+  }, [tracker.id]);
 
   const currentKey = useMemo(() => comparableNotification(notification), [notification]);
   const isDirty = baselineStr !== null && currentKey !== baselineStr;
@@ -105,19 +110,19 @@ export function LearningPlanNotificationConfig({ planId }: Props) {
     setIsLoading(true);
     try {
       const supabase = createClient();
-      const payload = { ...notification, plan_id: planId };
+      const payload = { ...notification, tracker_id: tracker.id };
       if (notification.id) {
-        await supabase.from('learning_plan_notifications').update(payload).eq('id', notification.id);
+        await supabase.from('tracker_notifications').update(payload).eq('id', notification.id);
         setBaselineStr(currentKey);
       } else {
         const { data, error } = await supabase
-          .from('learning_plan_notifications')
+          .from('tracker_notifications')
           .insert(payload)
           .select()
           .single();
         if (error) throw error;
         if (data) {
-          const row = data as LearningPlanNotification;
+          const row = data as TrackerNotification;
           setNotification(row);
           setBaselineStr(comparableNotification(row));
         }
@@ -136,25 +141,40 @@ export function LearningPlanNotificationConfig({ planId }: Props) {
     reminder: 'Lembrete',
   };
 
+  const pk = tracker.period_kind ?? 'daily';
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 p-4 bg-surface-2 rounded-xl border border-border">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          {notification.enabled ? (
-            <Bell size={18} className="text-brand-primary" />
-          ) : (
-            <BellOff size={18} className="text-text-muted" />
-          )}
-          <div>
-            <p className="text-sm font-semibold text-text-primary">Lembretes de Estudo</p>
-            <p className="text-xs text-text-muted">Receba notificações para lembrar de estudar.</p>
-          </div>
+        <div>
+          <p className="text-sm font-semibold text-text-primary">
+            {tracker.label}
+            {pk !== 'daily' && (
+              <span className="ml-2 inline-flex rounded-full bg-surface-3 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                {PERIOD_BADGE[pk] ?? pk}
+              </span>
+            )}
+          </p>
+          <p className="text-xs text-text-muted">{tracker.unit ? `Unidade: ${tracker.unit}` : tracker.type}</p>
         </div>
         <Switch
           checked={notification.enabled ?? true}
           onCheckedChange={(v) => setNotification((prev) => ({ ...prev, enabled: v }))}
         />
       </div>
+
+      {pk !== 'daily' && (
+        <p className="text-xs leading-relaxed text-text-muted">
+          Esta meta não é diária: o lembrete dispara nos <strong>dias da semana</strong> que definiu na meta; deixa de
+          enviar push quando o <strong>período corrente</strong> já estiver concluído.
+        </p>
+      )}
+      {pk === 'monthly' && tracker.period_aggregation === 'single' && (
+        <p className="text-xs leading-relaxed text-amber-700/90 dark:text-amber-400/90">
+          <strong>Dica:</strong> para metas mensais únicas, combine <strong>horário fixo</strong> com um único dia da
+          semana (ex.: só sextas), para o lembrete fazer sentido no calendário.
+        </p>
+      )}
 
       {notification.enabled && (
         <>
@@ -178,32 +198,17 @@ export function LearningPlanNotificationConfig({ planId }: Props) {
           {notification.type === 'fixed_time' && (
             <div className="flex flex-col gap-2">
               {(notification.scheduled_times ?? ['08:00']).map((time, i) => (
-                <div key={i} className="flex items-end gap-2">
-                  <TimePicker
-                    className="flex-1"
-                    value={time}
-                    label={`Horário ${i + 1}`}
-                    clearable={false}
-                    onChange={(v) => {
-                      const times = [...(notification.scheduled_times ?? [])];
-                      times[i] = v ?? time;
-                      setNotification((prev) => ({ ...prev, scheduled_times: times }));
-                    }}
-                  />
-                  {(notification.scheduled_times ?? []).length > 1 && (
-                    <button
-                      type="button"
-                      className="text-xs text-danger hover:underline pb-2 cursor-pointer"
-                      onClick={() => {
-                        const times = [...(notification.scheduled_times ?? [])];
-                        times.splice(i, 1);
-                        setNotification((prev) => ({ ...prev, scheduled_times: times }));
-                      }}
-                    >
-                      Remover
-                    </button>
-                  )}
-                </div>
+                <TimePicker
+                  key={i}
+                  value={time}
+                  label={`Horário ${i + 1}`}
+                  clearable={false}
+                  onChange={(v) => {
+                    const times = [...(notification.scheduled_times ?? [])];
+                    times[i] = v ?? time;
+                    setNotification((prev) => ({ ...prev, scheduled_times: times }));
+                  }}
+                />
               ))}
               <button
                 type="button"

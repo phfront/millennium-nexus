@@ -48,7 +48,7 @@ import {
   AlertTriangle,
   Loader2,
 } from "lucide-react";
-import { WEEK_DAY_LABELS } from "@/lib/daily-goals/scheduling";
+import { WEEK_DAY_LABELS } from "@/lib/habits-goals/scheduling";
 import { saveFullLearningPlan } from "@/app/learning/actions";
 import {
   parseMarkdownToPlan,

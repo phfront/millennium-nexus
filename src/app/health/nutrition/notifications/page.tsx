@@ -8,7 +8,7 @@ import { PushNotificationsCard } from '@/components/push/PushNotificationsCard';
 import { useDietSettings } from '@/hooks/health/use-diet-settings';
 import { useDietPlan } from '@/hooks/health/use-diet-plan';
 import { useUserStore } from '@/store/user-store';
-import { TIMEZONE_OPTIONS } from '@/lib/daily-goals/timezone';
+import { TIMEZONE_OPTIONS } from '@/lib/habits-goals/timezone';
 
 export default function NutritionNotificationsPage() {
   const user = useUserStore((s) => s.user);

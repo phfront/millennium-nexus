@@ -26,6 +26,18 @@ type SupabaseServiceClient = ReturnType<typeof createClient<any>>;
 // ---------------------------------------------------------------------------
 // Tipos
 // ---------------------------------------------------------------------------
+interface HabitsGoalsTrackerRow {
+  user_id: string;
+  label: string;
+  active: boolean;
+  recurrence_days: number[] | null;
+  period_kind: string;
+  period_aggregation: string;
+  goal_value: number | null;
+  type: string;
+  checklist_items: unknown;
+}
+
 interface TrackerNotification {
   id: string;
   tracker_id: string;
@@ -37,11 +49,7 @@ interface TrackerNotification {
   target_time: string | null;
   lead_time: number | null;
   enabled: boolean;
-  trackers: {
-    user_id: string;
-    label: string;
-    active: boolean;
-  };
+  trackers: HabitsGoalsTrackerRow;
 }
 
 interface PushSubscription {
@@ -117,6 +125,132 @@ function groupSubscriptionsByUser(subs: PushSubscription[]): Map<string, PushSub
     m.set(s.user_id, arr);
   }
   return m;
+}
+
+/** Data civil YYYY-MM-DD no fuso IANA do utilizador. */
+function getZonedDateYmd(now: Date, timeZone: string): string {
+  const tz = timeZone?.trim() || 'UTC';
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now);
+  } catch {
+    return new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  }
+}
+
+const DOW_SHORT_TO_NUM: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
+function getWeekdayInTz(now: Date, timeZone: string): number {
+  const tz = timeZone?.trim() || 'UTC';
+  try {
+    const label = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(now);
+    return DOW_SHORT_TO_NUM[label] ?? 0;
+  } catch {
+    return now.getUTCDay();
+  }
+}
+
+function logYmd(createdAt: string): string {
+  return String(createdAt).slice(0, 10);
+}
+
+function habitsGoalMetInPeriod(
+  tracker: HabitsGoalsTrackerRow,
+  periodStart: string,
+  todayYmd: string,
+  logs: { created_at: string; value: number | null; checked_items: boolean[] | null }[],
+): boolean {
+  const inWin = logs.filter((l) => {
+    const d = logYmd(l.created_at);
+    return d >= periodStart && d <= todayYmd;
+  });
+  const goal = Number(tracker.goal_value ?? 0);
+  const agg = (tracker.period_aggregation ?? 'single') === 'aggregate';
+  const typ = tracker.type ?? 'counter';
+
+  if (typ === 'boolean') {
+    return inWin.some((l) => l.value === 1);
+  }
+  if (typ === 'checklist') {
+    const items = (tracker.checklist_items as { label?: string }[] | null) ?? [];
+    const n = items.length;
+    if (n === 0) return false;
+    if (agg) {
+      return inWin.some((l) => {
+        const c = l.checked_items ?? [];
+        return c.length >= n && c.every(Boolean);
+      });
+    }
+    const row = inWin.find((l) => logYmd(l.created_at) === periodStart);
+    const c = row?.checked_items ?? [];
+    return c.length >= n && c.every(Boolean);
+  }
+  if (typ === 'counter' || typ === 'slider') {
+    const sum = inWin.reduce((s, l) => s + Number(l.value ?? 0), 0);
+    if (agg) return sum >= goal;
+    const row = inWin.find((l) => logYmd(l.created_at) === periodStart);
+    return Number(row?.value ?? 0) >= goal;
+  }
+  return false;
+}
+
+async function filterHabitsGoalsAlreadyComplete(
+  supabase: SupabaseServiceClient,
+  notifs: TrackerNotification[],
+  tzByUser: Map<string, string>,
+  now: Date,
+): Promise<TrackerNotification[]> {
+  const out: TrackerNotification[] = [];
+  const cache = new Map<string, boolean>();
+
+  for (const n of notifs) {
+    const uid = n.trackers.user_id;
+    const tz = tzByUser.get(uid) ?? 'America/Sao_Paulo';
+    const todayYmd = getZonedDateYmd(now, tz);
+    const cacheKey = `${n.tracker_id}:${todayYmd}`;
+    let complete: boolean;
+    if (cache.has(cacheKey)) {
+      complete = cache.get(cacheKey)!;
+    } else {
+      const { data: periodRow, error: rpcErr } = await supabase.rpc('tracker_period_start', {
+        p_tracker: n.tracker_id,
+        p_date: todayYmd,
+      });
+      if (rpcErr) {
+        console.error('tracker_period_start', rpcErr);
+        complete = false;
+      } else {
+        const periodStart = String(periodRow);
+        const { data: logRows, error: logErr } = await supabase
+          .from('logs')
+          .select('created_at, value, checked_items')
+          .eq('tracker_id', n.tracker_id)
+          .gte('created_at', periodStart)
+          .lte('created_at', todayYmd);
+        if (logErr) {
+          console.error('logs fetch (habits push)', logErr);
+          complete = false;
+        } else {
+          complete = habitsGoalMetInPeriod(n.trackers, periodStart, todayYmd, logRows ?? []);
+        }
+      }
+      cache.set(cacheKey, complete);
+    }
+    if (!complete) out.push(n);
+  }
+  return out;
 }
 
 function shouldFire(
@@ -593,7 +727,11 @@ Deno.serve(async () => {
       id, tracker_id, type,
       frequency_minutes, window_start, window_end,
       scheduled_times, target_time, lead_time, enabled,
-      trackers!inner ( user_id, label, active )
+      trackers!inner (
+        user_id, label, active,
+        recurrence_days, period_kind, period_aggregation,
+        goal_value, type, checklist_items
+      )
     `)
     .eq('enabled', true)
     .eq('trackers.active', true);
@@ -627,12 +765,18 @@ Deno.serve(async () => {
     }
   }
 
-  // Filtra as que devem disparar agora (relógio no fuso de cada utilizador)
-  const firing = notifList.filter((n) => {
+  // Filtra: horário + dia da semana (recurrence_days) + meta ainda não cumprida no período corrente
+  const firingRaw = notifList.filter((n) => {
     const uid = n.trackers.user_id;
     const tz = tzByUser.get(uid) ?? defaultTz;
+    const days = n.trackers.recurrence_days;
+    if (days != null && days.length > 0) {
+      if (!days.includes(getWeekdayInTz(now, tz))) return false;
+    }
     return shouldFire(n, getZonedClock(now, tz));
   });
+
+  const firing = await filterHabitsGoalsAlreadyComplete(supabase, firingRaw, tzByUser, now);
 
   let sent    = 0;
   let expired = 0;
@@ -652,9 +796,9 @@ Deno.serve(async () => {
           await webPush.sendNotification(
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
             JSON.stringify({
-              title: 'Nexus Daily Goals',
+              title: 'Hábitos e Metas',
               body:  `Lembrete: ${notif.trackers.label}`,
-              url:   '/daily-goals',
+              url:   '/habits-goals',
               tag:   `dg-${userId.slice(0, 8)}-${notif.tracker_id.slice(0, 8)}`,
               icon:  '/icons/icon-192.png',
             }),

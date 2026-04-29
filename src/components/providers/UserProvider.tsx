@@ -4,8 +4,8 @@ import { useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { useUserStore } from '@/store/user-store';
 import { useThemeStore } from '@/store/useThemeStore';
-import { useDailyGoalsStore } from '@/store/use-daily-goals-store';
-import { getLocalDateStr } from '@/lib/daily-goals/timezone';
+import { useHabitsGoalsStore } from '@/store/use-habits-goals-store';
+import { getLocalDateStr } from '@/lib/habits-goals/timezone';
 import type { Profile } from '@/lib/auth-types';
 
 interface UserProviderProps {
@@ -17,7 +17,7 @@ interface UserProviderProps {
 export function UserProvider({ user, profile, children }: UserProviderProps) {
   const setUser = useUserStore((s) => s.setUser);
   const setTheme = useThemeStore((s) => s.setTheme);
-  const setSelectedDate = useDailyGoalsStore((s) => s.setSelectedDate);
+  const setSelectedDate = useHabitsGoalsStore((s) => s.setSelectedDate);
 
   useEffect(() => {
     if (user) {

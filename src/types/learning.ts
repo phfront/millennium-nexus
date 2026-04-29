@@ -1,4 +1,4 @@
-import type { NotificationType } from '@/types/daily-goals';
+import type { NotificationType } from '@/types/habits-goals';
 
 export type LearningPlanStatus = 'planning' | 'in_progress' | 'completed' | 'paused';
 export type LearningSchedulingType = 'relative' | 'calendar';

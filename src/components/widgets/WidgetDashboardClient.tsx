@@ -7,7 +7,7 @@ import { Button, EmptyState, Skeleton } from '@phfront/millennium-ui';
 import { useDashboardWidgets } from '@/hooks/widgets/use-dashboard-widgets';
 import { useActiveBreakpoint } from '@/hooks/ui/use-active-breakpoint';
 import { WidgetGrid } from '@/components/widgets/WidgetGrid';
-import { DailyGoalsTodayLogsProvider } from '@/components/widgets/DailyGoalsTodayLogsProvider';
+import { HabitsGoalsTodayLogsProvider } from '@/components/widgets/HabitsGoalsTodayLogsProvider';
 import type { DashboardWidgetBreakpoint } from '@/types/database';
 import {
   createDashboardWidgetsBroadcastChannel,
@@ -94,14 +94,14 @@ export function WidgetDashboardClient({ allowedModuleSlugs }: WidgetDashboardCli
 
   return (
     <div className="space-y-4">
-      <DailyGoalsTodayLogsProvider>
+      <HabitsGoalsTodayLogsProvider>
         <WidgetGrid
           key={`${breakpoint}-${gridVersion}`}
           widgetKeys={visibleWidgetKeys}
           layouts={layouts}
           breakpoint={breakpoint}
         />
-      </DailyGoalsTodayLogsProvider>
+      </HabitsGoalsTodayLogsProvider>
 
       <div className="flex justify-end items-center gap-2">
         <Link href="/widgets/edit">
