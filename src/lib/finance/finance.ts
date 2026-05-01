@@ -12,6 +12,33 @@ export function accumulatedSurplus(months: { month: string; surplus: number }[])
   });
 }
 
+/** Normaliza chave de mês (`YYYY-MM-DD` ou prefixo) para comparação lexicográfica. */
+export function normalizeSummaryMonthKey(m: string): string {
+  if (!m) return '';
+  return m.length >= 10 ? m.slice(0, 10) : m;
+}
+
+/**
+ * Soma corrida da sobra desde `fromMonthInclusive` (ex.: mês civil corrente),
+ * por mês presente em `summaries`. Meses antes do âncora não entram no mapa.
+ */
+export function runningSurplusTotalByMonth(
+  summaries: MonthlySummary[],
+  fromMonthInclusive: string,
+): Map<string, number> {
+  const from = normalizeSummaryMonthKey(fromMonthInclusive);
+  const sorted = [...summaries].sort((a, b) => a.month.localeCompare(b.month));
+  let acc = 0;
+  const map = new Map<string, number>();
+  for (const s of sorted) {
+    const k = normalizeSummaryMonthKey(s.month);
+    if (k < from) continue;
+    acc += Number(s.surplus);
+    map.set(k, acc);
+  }
+  return map;
+}
+
 export function monthlyIncomeTotal(amounts: (number | null | undefined)[]): number {
   return amounts.reduce<number>((sum, v) => sum + (v ?? 0), 0);
 }

@@ -95,11 +95,15 @@ export function MonthlyDashboard() {
       : summary && summary.surplus < 0
         ? 'negative'
         : 'muted';
-  const accumulatedTone: StatCardValueTone =
-    summary && summary.accumulated_surplus >= 0 ? 'positive' : 'negative';
 
   const currentMonth = toMonthDate(new Date());
   const isCurrentMonth = month === currentMonth;
+  const displayedAccumulated =
+    isCurrentMonth && summary
+      ? Number(summary.surplus)
+      : Number(summary?.accumulated_surplus ?? 0);
+  const accumulatedTone: StatCardValueTone =
+    summary && displayedAccumulated >= 0 ? 'positive' : 'negative';
   const pendingPayments =
     progress.total > 0 ? Math.max(0, progress.total - progress.paid) : 0;
 
@@ -322,11 +326,11 @@ export function MonthlyDashboard() {
         />
         <StatCard
           label="Acumulado"
-          value={formatBRL(summary?.accumulated_surplus ?? 0)}
+          value={formatBRL(displayedAccumulated)}
           isLoading={isLoading}
           valueTone={accumulatedTone}
           valueSize="md"
-          sub="total histórico"
+          sub={isCurrentMonth ? 'a partir deste mês' : 'total histórico'}
         />
       </div>
 

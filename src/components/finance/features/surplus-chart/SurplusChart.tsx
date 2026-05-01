@@ -17,6 +17,9 @@ import { formatMonth, formatMonthChartAxisShort, formatBRL } from '@/lib/finance
 import {
   FINANCE_OVERVIEW_CHART_RANGE_LABELS,
   filterSummariesForChartRange,
+  normalizeSummaryMonthKey,
+  runningSurplusTotalByMonth,
+  toMonthDate,
   type FinanceOverviewChartRange,
 } from '@/lib/finance/finance';
 import type { MonthlySummary } from '@/types/finance';
@@ -126,18 +129,24 @@ export function SurplusChart({ summaries }: SurplusChartProps) {
   );
 
   const data = useMemo((): ChartDatum[] => {
+    const anchorKey = toMonthDate(new Date());
+    const runningFromCurrentMonth = runningSurplusTotalByMonth(summaries, anchorKey);
     return filtered.map((s) => {
-      const monthKey = s.month.length >= 10 ? s.month.slice(0, 10) : s.month;
+      const monthKey = normalizeSummaryMonthKey(s.month);
+      const acumulado =
+        monthKey >= anchorKey
+          ? (runningFromCurrentMonth.get(monthKey) ?? Number(s.surplus))
+          : Number(s.accumulated_surplus);
       return {
         monthKey,
         month: formatMonth(s.month),
         receitas: Number(s.total_income),
         despesas: Number(s.total_expenses) + Number(s.total_one_time),
         sobra: Number(s.surplus),
-        acumulado: Number(s.accumulated_surplus),
+        acumulado,
       };
     });
-  }, [filtered]);
+  }, [filtered, summaries]);
 
   if (summaries.length > 0 && data.length === 0) {
     return (
@@ -157,7 +166,8 @@ export function SurplusChart({ summaries }: SurplusChartProps) {
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-text-muted">
-          Barras: receitas, despesas (fixas + pontuais) e sobra do mês. Linha: saldo acumulado (eixo à direita).
+          Barras: receitas, despesas (fixas + pontuais) e sobra do mês. Linha: saldo acumulado (eixo à direita)
+          — a partir do mês civil corrente, a linha ignora meses anteriores; antes disso usa o total histórico.
           Em «6 / 12 / 24 m à frente» mostra-se o mês corrente e os meses seguintes (não o passado).
         </p>
         <ChartRangePicker range={range} setRange={setRange} />
