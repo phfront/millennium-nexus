@@ -1,7 +1,12 @@
 /**
  * Edge Function: send-push-notifications
  *
- * Disparada via cron a cada minuto pelo pg_cron do Supabase.
+ * Disparada via cron a cada 5 minutos (no Dashboard Supabase ou pg_cron: passo
+ * de 5 no campo minuto do padrão cron). Tipos fixed_time / reminder e horários
+ * fixos (finanças, nutrição)
+ * usam janela de catch-up de 5 min para não perder o minuto exacto entre ticks.
+ * Notificações `interval` avaliam só o minuto actual (evita dois disparos numa
+ * mesma invocação quando vários múltiplos cabem na janela).
  * I/O: uma leitura de `push_subscriptions` no início; finance/nutrição só
  * consideram utilizadores com push; learning usa RPC `fn_next_incomplete_learning_plan_days`.
  * 1) Daily Goals: regras em `tracker_notifications` (horário local do utilizador).
@@ -94,6 +99,9 @@ function mealReminderMinuteOfDay(targetTimeStr: string, leadMinutes: number): nu
   return reminderMin;
 }
 
+/** Igual ao intervalo do cron que invoca esta função (catch-up para horários fixos). */
+const PUSH_CRON_INTERVAL_MINUTES = 5;
+
 /** Hora e minuto num fuso IANA (ex.: America/Sao_Paulo), para o instante `now` em UTC. */
 function getZonedClock(
   now: Date,
@@ -115,6 +123,35 @@ function getZonedClock(
   } catch {
     return getZonedClock(now, 'UTC');
   }
+}
+
+function getZonedClockAtLag(
+  now: Date,
+  timeZone: string,
+  lagMinutes: number,
+): ReturnType<typeof getZonedClock> {
+  const t = new Date(now.getTime() - lagMinutes * 60_000);
+  return getZonedClock(t, timeZone);
+}
+
+/** `HH:MM` local coincidiu com o alvo em algum dos últimos N minutos (inclui o instante actual). */
+function zonedHmMatchedInCatchupWindow(now: Date, timeZone: string, targetHm: string): boolean {
+  const hm = targetHm.slice(0, 5);
+  for (let lag = 0; lag <= PUSH_CRON_INTERVAL_MINUTES; lag++) {
+    if (getZonedClockAtLag(now, timeZone, lag).hm === hm) return true;
+  }
+  return false;
+}
+
+function zonedTotalMinutesMatchedInCatchupWindow(
+  now: Date,
+  timeZone: string,
+  targetTotalMinutes: number,
+): boolean {
+  for (let lag = 0; lag <= PUSH_CRON_INTERVAL_MINUTES; lag++) {
+    if (getZonedClockAtLag(now, timeZone, lag).totalMinutes === targetTotalMinutes) return true;
+  }
+  return false;
 }
 
 function groupSubscriptionsByUser(subs: PushSubscription[]): Map<string, PushSubscription[]> {
@@ -280,6 +317,25 @@ function shouldFire(
   return false;
 }
 
+/**
+ * Com cron espaçado (ex. 5 min), `fixed_time` / `reminder` podem calhar entre ticks;
+ * percorre os últimos PUSH_CRON_INTERVAL_MINUTES+1 minutos locais.
+ * `interval` só no minuto actual — evita dois múltiplos na mesma janela.
+ */
+function shouldFireWithCronCatchup(
+  notif: TrackerNotification,
+  now: Date,
+  timeZone: string,
+): boolean {
+  if (notif.type === 'interval' && notif.frequency_minutes) {
+    return shouldFire(notif, getZonedClock(now, timeZone));
+  }
+  for (let lag = 0; lag <= PUSH_CRON_INTERVAL_MINUTES; lag++) {
+    if (shouldFire(notif, getZonedClockAtLag(now, timeZone, lag))) return true;
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Learning — lembretes de planos de aprendizado ativos
 // ---------------------------------------------------------------------------
@@ -327,7 +383,7 @@ async function sendLearningPlanReminders(
   const firing = notifList.filter((n) => {
     const uid = n.learning_plans.user_id;
     const tz = tzByUser.get(uid) ?? defaultTz;
-    return shouldFire(n as unknown as TrackerNotification, getZonedClock(now, tz));
+    return shouldFireWithCronCatchup(n as unknown as TrackerNotification, now, tz);
   });
 
   if (firing.length === 0) return { sent: 0, expired: 0, checked: notifList.length };
@@ -515,8 +571,7 @@ async function sendFinanceExpenseReminders(
     const hm = (row.expense_due_reminder_time ?? '09:00').slice(0, 5);
     const uid = row.user_id;
     const tz = tzByUser.get(uid) ?? defaultTz;
-    const clock = getZonedClock(now, tz);
-    if (clock.hm !== hm) continue;
+    if (!zonedHmMatchedInCatchupWindow(now, tz, hm)) continue;
     eligibleUsers.push({ userId: uid, offsets, reminderHm: hm });
   }
 
@@ -773,7 +828,7 @@ Deno.serve(async () => {
     if (days != null && days.length > 0) {
       if (!days.includes(getWeekdayInTz(now, tz))) return false;
     }
-    return shouldFire(n, getZonedClock(now, tz));
+    return shouldFireWithCronCatchup(n, now, tz);
   });
 
   const firing = await filterHabitsGoalsAlreadyComplete(supabase, firingRaw, tzByUser, now);
@@ -994,7 +1049,6 @@ async function sendNutritionReminders(
 
   for (const uid of userIds) {
     const tz = tzByUser.get(uid) ?? defaultTz;
-    const clock = getZonedClock(now, tz);
     const today = todayStr(tz);
     const userSubs = subscriptions.filter((s) => s.user_id === uid);
     if (userSubs.length === 0) continue;
@@ -1003,7 +1057,7 @@ async function sendNutritionReminders(
     if (!settings) continue;
 
     // --- Hidratação: se às 16h local, consumo < 50% da meta ---
-    if (clock.hm === '16:00') {
+    if (zonedHmMatchedInCatchupWindow(now, tz, '16:00')) {
       const waterTarget = (settings as { daily_water_target_ml: number }).daily_water_target_ml;
       if (waterTarget > 0) {
         const { data: waterRows } = await supabase
@@ -1055,7 +1109,7 @@ async function sendNutritionReminders(
       if (mealsForUser?.length) {
         for (const meal of mealsForUser) {
           const reminderMin = mealReminderMinuteOfDay(meal.target_time, leadClamped);
-          if (clock.totalMinutes !== reminderMin) continue;
+          if (!zonedTotalMinutesMatchedInCatchupWindow(now, tz, reminderMin)) continue;
 
           const loggedNames = await getLoggedMealNamesForDay(uid, today);
           if (loggedNames.has(meal.name)) continue;
@@ -1094,7 +1148,7 @@ async function sendNutritionReminders(
     }
 
     // --- Refeições: se às 21h local, checklist vazio ---
-    if (clock.hm === '21:00') {
+    if (zonedHmMatchedInCatchupWindow(now, tz, '21:00')) {
       const { data: logRows } = await supabase
         .from('diet_logs')
         .select('id')

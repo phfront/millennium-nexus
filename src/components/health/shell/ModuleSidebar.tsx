@@ -11,6 +11,7 @@ import {
   ChevronDown, ChevronUp,
   HomeIcon,
   Bell,
+  Flame,
 } from 'lucide-react';
 
 const WEIGHT_CHILDREN = [
@@ -21,7 +22,21 @@ const WEIGHT_CHILDREN = [
 ];
 
 function isWeightSectionPath(pathname: string) {
-  return pathname.startsWith('/health') && !pathname.startsWith('/health/nutrition');
+  return (
+    pathname.startsWith('/health') &&
+    !pathname.startsWith('/health/nutrition') &&
+    !pathname.startsWith('/health/calorias')
+  );
+}
+
+const CALORIAS_CHILDREN = [
+  { href: '/health/calorias', icon: <HomeIcon size={18} />, label: 'Início' },
+  { href: '/health/calorias/history', icon: <History size={18} />, label: 'Histórico' },
+  { href: '/health/calorias/settings', icon: <Settings size={18} />, label: 'Configurações' },
+];
+
+function isCaloriasSectionPath(pathname: string) {
+  return pathname.startsWith('/health/calorias');
 }
 
 const NUTRITION_CHILDREN = [
@@ -37,8 +52,10 @@ function SidebarBody({ onClose }: { onClose: () => void }) {
   const pathname = usePathname();
   const isOnWeight = isWeightSectionPath(pathname);
   const isOnNutrition = pathname.startsWith('/health/nutrition');
+  const isOnCalorias = isCaloriasSectionPath(pathname);
   const [weightOpen, setWeightOpen] = useState(isOnWeight);
   const [nutritionOpen, setNutritionOpen] = useState(isOnNutrition);
+  const [caloriasOpen, setCaloriasOpen] = useState(isOnCalorias);
 
   useEffect(() => {
     if (isOnWeight) setWeightOpen(true);
@@ -47,6 +64,10 @@ function SidebarBody({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (isOnNutrition) setNutritionOpen(true);
   }, [isOnNutrition]);
+
+  useEffect(() => {
+    if (isOnCalorias) setCaloriasOpen(true);
+  }, [isOnCalorias]);
 
   return (
     <>
@@ -84,6 +105,49 @@ function SidebarBody({ onClose }: { onClose: () => void }) {
           <div className="overflow-hidden">
             <div className="flex flex-col gap-0.5 ml-3 pl-3 border-l border-border/50 pt-1">
               {NUTRITION_CHILDREN.map((l) => (
+                <NavItem
+                  key={l.href}
+                  href={l.href}
+                  icon={l.icon}
+                  label={l.label}
+                  isActive={pathname === l.href}
+                  onClick={onClose}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Calorias — submenu */}
+        <button
+          type="button"
+          onClick={() => setCaloriasOpen((p) => !p)}
+          className={[
+            'flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium',
+            'transition-[background-color,color] duration-[var(--transition-fast)]',
+            isOnCalorias
+              ? 'bg-brand-primary/10 text-brand-primary'
+              : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary',
+          ].join(' ')}
+        >
+          <span className={`shrink-0 ${isOnCalorias ? 'text-brand-primary' : ''}`}>
+            <Flame size={18} />
+          </span>
+          <span className="flex-1 truncate text-left">Calorias</span>
+          <span className="shrink-0 text-text-muted">
+            {caloriasOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </span>
+        </button>
+
+        <div
+          className={[
+            'grid transition-[grid-template-rows] duration-300 ease-out',
+            caloriasOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+          ].join(' ')}
+        >
+          <div className="overflow-hidden">
+            <div className="ml-3 flex flex-col gap-0.5 border-l border-border/50 pl-3 pt-1">
+              {CALORIAS_CHILDREN.map((l) => (
                 <NavItem
                   key={l.href}
                   href={l.href}
