@@ -1,15 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Check } from 'lucide-react';
+import { CalendarRange, Check } from 'lucide-react';
 import { Button, Modal, Skeleton, useToast } from '@phfront/millennium-ui';
 import type { CaloriasLog, CaloriasSettings } from '@/types/calorias';
 import { formatKcal } from '@/lib/health/nutrition';
+import { WidgetSectionHeader } from '@/components/widgets/WidgetSectionHeader';
 import {
+  calcCaloriasProgress,
   dayIndexMon0Sun6,
   effectiveTargetForDay,
+  formatActiveDaysLabel,
   isActiveDay,
   parseLocalDateISO,
+  weeklyTargetKcal,
+  weeklyTotal,
 } from '@/lib/health/calorias';
 
 const DAY_SHORT = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'] as const;
@@ -24,6 +29,8 @@ export type CaloriasWeekGridProps = {
   isLoading: boolean;
   addKcal: (amount: number, note?: string | null, loggedDate?: string) => Promise<CaloriasLog>;
   undoLastForDate: (loggedDate: string) => Promise<void>;
+  /** Quando false, sem cartão próprio (ex.: widget na grelha da home). */
+  hasBackground?: boolean;
 };
 
 function formatDayHeading(dateISO: string): string {
@@ -42,7 +49,9 @@ export function CaloriasWeekGrid({
   isLoading,
   addKcal,
   undoLastForDate,
+  hasBackground = true,
 }: CaloriasWeekGridProps) {
+  const embed = !hasBackground;
   const { toast } = useToast();
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const [otherAmount, setOtherAmount] = useState('');
@@ -53,7 +62,15 @@ export function CaloriasWeekGrid({
   }, [editingDate]);
 
   if (isLoading) {
-    return <Skeleton variant="block" className="h-32 w-full rounded-2xl sm:h-28" />;
+    return (
+      <Skeleton
+        variant="block"
+        className={[
+          embed ? 'h-full min-h-0 w-full' : 'h-32 w-full sm:h-28',
+          hasBackground ? 'rounded-2xl' : 'rounded-none',
+        ].join(' ')}
+      />
+    );
   }
 
   const dayLogs = editingDate ? logs.filter((l) => l.logged_date === editingDate) : [];
@@ -94,141 +111,272 @@ export function CaloriasWeekGrid({
     }
   }
 
-  return (
-    <div className="rounded-2xl border border-border bg-surface-2 p-2 shadow-sm ring-1 ring-brand-primary/10 sm:p-4">
-      <div className="mb-2 flex items-center gap-2 sm:mb-3">
+  const rootClass = [
+    'flex min-h-0 flex-col',
+    hasBackground
+      ? 'rounded-2xl border border-border bg-surface-2 p-2 shadow-sm ring-1 ring-brand-primary/10 sm:p-4'
+      : 'h-full min-h-0 border-0 bg-transparent p-0 shadow-none ring-0',
+  ].join(' ');
+
+  const weekTotalKcal = weeklyTotal(logs, weekBounds);
+  const weeklyTarget = weeklyTargetKcal(settings);
+  const weekProgressPct = calcCaloriasProgress(weekTotalKcal, weeklyTarget);
+  const embedSubtitle = `${formatActiveDaysLabel(settings.active_days)} · ${formatKcal(settings.daily_target_kcal)}/dia · ${formatKcal(weeklyTarget)}/sem · Verde: meta diaria, ouro: rollover.`;
+
+  const weekAriaLabel =
+    'Calorias da semana. Verde: meta diaria. Ouro: saldo semanal (rollover). Toque em dias passados para registar ou desfazer.';
+
+  const renderDayCell = (dateISO: string, compact: boolean) => {
+    const d = parseLocalDateISO(dateISO);
+    const label = DAY_SHORT[dayIndexMon0Sun6(d)];
+    const active = isActiveDay(dateISO, settings.active_days);
+    const effective = effectiveTargetForDay(dateISO, settings, logs, weekBounds);
+    const total = logs
+      .filter((l) => l.logged_date === dateISO)
+      .reduce((s, l) => s + l.amount_kcal, 0);
+    const met = effective > 0 ? total >= effective : total > 0;
+    const isToday = dateISO === today;
+    const isPast = dateISO < today;
+
+    const shellClass = compact
+      ? [
+          'relative flex w-full min-w-0 flex-col items-center justify-start gap-1 overflow-hidden rounded-lg border px-0.5 py-1.5 text-center touch-manipulation',
+          'shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]',
+          active
+            ? [
+                'border-brand-primary/85 bg-linear-to-b from-brand-primary/38 via-brand-primary/18 to-surface-3',
+                'shadow-[0_4px_14px_-6px_color-mix(in_oklab,var(--color-brand-primary)_45%,transparent)]',
+              ].join(' ')
+            : [
+                'border-brand-secondary/80 bg-linear-to-b from-brand-secondary/34 via-brand-secondary/16 to-surface-3',
+                'shadow-[0_4px_14px_-6px_color-mix(in_oklab,var(--color-brand-secondary)_40%,transparent)]',
+              ].join(' '),
+          isToday
+            ? 'ring-2 ring-brand-primary ring-offset-0 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-brand-primary)_35%,transparent)]'
+            : '',
+          isPast && active
+            ? 'cursor-pointer transition-[filter,background-color] duration-200 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/70 focus-visible:ring-offset-0'
+            : '',
+          isPast && !active
+            ? 'cursor-pointer transition-[filter,background-color] duration-200 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-secondary/70 focus-visible:ring-offset-0'
+            : '',
+        ].join(' ')
+      : [
+          'relative flex min-h-[6.75rem] w-[96px] min-w-[96px] max-w-[96px] flex-none shrink-0 snap-start flex-col items-center justify-between gap-1.5 overflow-hidden rounded-xl border-2 px-1.5 pb-3 pt-3.5 text-center touch-manipulation',
+          'shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]',
+          'sm:min-h-[6rem] sm:gap-1 sm:px-1.5 sm:pb-3 sm:pt-3.5',
+          active
+            ? [
+                'border-brand-primary/85 bg-linear-to-b from-brand-primary/38 via-brand-primary/18 to-surface-3',
+                'shadow-[0_8px_22px_-8px_color-mix(in_oklab,var(--color-brand-primary)_45%,transparent)]',
+              ].join(' ')
+            : [
+                'border-brand-secondary/80 bg-linear-to-b from-brand-secondary/34 via-brand-secondary/16 to-surface-3',
+                'shadow-[0_8px_22px_-8px_color-mix(in_oklab,var(--color-brand-secondary)_40%,transparent)]',
+              ].join(' '),
+          isToday
+            ? 'ring-2 ring-brand-primary ring-offset-1 ring-offset-surface-2 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-brand-primary)_35%,transparent),0_12px_28px_-10px_color-mix(in_oklab,var(--color-brand-primary)_50%,transparent)] sm:ring-offset-2'
+            : '',
+          isPast && active
+            ? 'cursor-pointer transition-[filter,background-color] duration-200 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/70 focus-visible:ring-offset-1 focus-visible:ring-offset-surface-2 sm:focus-visible:ring-offset-2'
+            : '',
+          isPast && !active
+            ? 'cursor-pointer transition-[filter,background-color] duration-200 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-secondary/70 focus-visible:ring-offset-1 focus-visible:ring-offset-surface-2 sm:focus-visible:ring-offset-2'
+            : '',
+        ].join(' ');
+
+    const capClass = active ? 'bg-brand-primary' : 'bg-brand-secondary';
+    const capH = compact ? 'h-1' : 'h-1.5';
+
+    const inner = compact ? (
+      <>
         <span
-          className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-brand-primary to-brand-secondary sm:h-8"
+          className={`pointer-events-none absolute inset-x-0 top-0 z-0 ${capH} ${capClass} opacity-95`}
           aria-hidden
         />
-        <h3 className="text-sm font-semibold text-white sm:text-base">Esta semana</h3>
+        <span className="relative z-1 max-w-full truncate text-[8px] font-bold uppercase tracking-wide text-white">
+          {label}
+        </span>
+        <span className="relative z-1 max-w-full truncate text-[11px] font-bold tabular-nums leading-none text-white">
+          {formatKcal(total)}
+        </span>
+        <span className="relative z-1 line-clamp-2 min-h-0 max-w-full text-[8px] font-semibold leading-tight text-white">
+          {effective > 0 ? `M ${formatKcal(effective)}` : '—'}
+        </span>
+        {met ? (
+          <span
+            className={[
+              'relative z-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-white',
+              active
+                ? 'bg-brand-primary/35 shadow-sm ring-1 ring-brand-primary/40'
+                : 'bg-brand-secondary/35 shadow-sm ring-1 ring-brand-secondary/45',
+            ].join(' ')}
+          >
+            <Check className="h-2.5 w-2.5" aria-hidden />
+          </span>
+        ) : (
+          <span
+            className={[
+              'relative z-1 h-4 w-4 shrink-0 rounded-full border-2 bg-surface-2/80',
+              active ? 'border-brand-primary/50' : 'border-brand-secondary/50',
+            ].join(' ')}
+            aria-hidden
+          />
+        )}
+      </>
+    ) : (
+      <>
+        <span
+          className={`pointer-events-none absolute inset-x-0 top-0 z-0 h-1.5 ${capClass} opacity-95`}
+          aria-hidden
+        />
+        <span className="relative z-1 text-[11px] font-bold uppercase tracking-wide text-white sm:text-[11px]">
+          {label}
+        </span>
+        <span className="relative z-1 text-[15px] font-bold tabular-nums leading-none text-white sm:text-base">
+          {formatKcal(total)}
+        </span>
+        <span className="relative z-1 line-clamp-2 text-[11px] font-semibold leading-snug text-white sm:text-[11px]">
+          {effective > 0 ? `meta ${formatKcal(effective)}` : '—'}
+        </span>
+        {met ? (
+          <span
+            className={[
+              'relative z-1 flex h-6 w-6 items-center justify-center rounded-full text-white sm:h-5 sm:w-5',
+              active
+                ? 'bg-brand-primary/35 shadow-sm ring-1 ring-brand-primary/40'
+                : 'bg-brand-secondary/35 shadow-sm ring-1 ring-brand-secondary/45',
+            ].join(' ')}
+          >
+            <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" aria-hidden />
+          </span>
+        ) : (
+          <span
+            className={[
+              'relative z-1 h-6 w-6 shrink-0 rounded-full border-2 bg-surface-2/80 sm:h-5 sm:w-5',
+              active ? 'border-brand-primary/50' : 'border-brand-secondary/50',
+            ].join(' ')}
+            aria-hidden
+          />
+        )}
+      </>
+    );
+
+    const dayAria = `${label}, ${formatKcal(total)} kcal${effective > 0 ? `, meta ${formatKcal(effective)}` : ''}${isPast ? '. Toque para registar ou corrigir.' : ''}`;
+
+    if (isPast) {
+      return (
+        <button
+          key={dateISO}
+          type="button"
+          className={shellClass}
+          aria-label={dayAria}
+          onClick={() => setEditingDate(dateISO)}
+        >
+          {inner}
+        </button>
+      );
+    }
+
+    return (
+      <div key={dateISO} className={shellClass} aria-label={compact ? dayAria : undefined}>
+        {inner}
       </div>
-      <div
-        className={[
-          '-mx-0.5 flex min-w-0 flex-nowrap gap-2 overflow-x-auto overscroll-x-contain px-0.5 pb-2 pt-0.5 [-webkit-overflow-scrolling:touch]',
-          'snap-x snap-mandatory [scrollbar-width:thin]',
-          'sm:mx-0 sm:gap-2.5 sm:px-0',
-        ].join(' ')}
-      >
-        {weekDates.map((dateISO) => {
-          const d = parseLocalDateISO(dateISO);
-          const label = DAY_SHORT[dayIndexMon0Sun6(d)];
-          const active = isActiveDay(dateISO, settings.active_days);
-          const effective = effectiveTargetForDay(dateISO, settings, logs, weekBounds);
-          const total = logs
-            .filter((l) => l.logged_date === dateISO)
-            .reduce((s, l) => s + l.amount_kcal, 0);
-          const met = effective > 0 ? total >= effective : total > 0;
-          const isToday = dateISO === today;
-          const isPast = dateISO < today;
+    );
+  };
 
-          const shellClass = [
-            'relative flex min-h-[6.75rem] w-[96px] min-w-[96px] max-w-[96px] flex-none shrink-0 snap-start flex-col items-center justify-between gap-1.5 overflow-hidden rounded-xl border-2 px-1.5 pb-3 pt-3.5 text-center touch-manipulation',
-            'shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]',
-            'sm:min-h-[6rem] sm:gap-1 sm:px-1.5 sm:pb-3 sm:pt-3.5',
-            active
-              ? [
-                  'border-brand-primary/85 bg-linear-to-b from-brand-primary/38 via-brand-primary/18 to-surface-3',
-                  'shadow-[0_8px_22px_-8px_color-mix(in_oklab,var(--color-brand-primary)_45%,transparent)]',
-                ].join(' ')
-              : [
-                  'border-brand-secondary/80 bg-linear-to-b from-brand-secondary/34 via-brand-secondary/16 to-surface-3',
-                  'shadow-[0_8px_22px_-8px_color-mix(in_oklab,var(--color-brand-secondary)_40%,transparent)]',
-                ].join(' '),
-            isToday
-              ? 'ring-2 ring-brand-primary ring-offset-1 ring-offset-surface-2 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-brand-primary)_35%,transparent),0_12px_28px_-10px_color-mix(in_oklab,var(--color-brand-primary)_50%,transparent)] sm:ring-offset-2'
-              : '',
-            isPast && active
-              ? 'cursor-pointer transition-[filter,background-color] duration-200 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/70 focus-visible:ring-offset-1 focus-visible:ring-offset-surface-2 sm:focus-visible:ring-offset-2'
-              : '',
-            isPast && !active
-              ? 'cursor-pointer transition-[filter,background-color] duration-200 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-secondary/70 focus-visible:ring-offset-1 focus-visible:ring-offset-surface-2 sm:focus-visible:ring-offset-2'
-              : '',
-          ].join(' ');
-
-          const capClass = active ? 'bg-brand-primary' : 'bg-brand-secondary';
-
-          const inner = (
-            <>
-              <span
-                className={`pointer-events-none absolute inset-x-0 top-0 z-0 h-1.5 ${capClass} opacity-95`}
-                aria-hidden
-              />
-              <span className="relative z-1 text-[11px] font-bold uppercase tracking-wide text-white sm:text-[11px]">
-                {label}
+  return (
+    <div className={rootClass}>
+      {embed ? (
+        <div className="relative z-10 flex h-full min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3">
+          <WidgetSectionHeader
+            variant="primary"
+            icon={<CalendarRange className="h-3.5 w-3.5" aria-hidden />}
+            title="Esta semana"
+            subtitle={embedSubtitle}
+            trailing={
+              <span className="rounded-full bg-black/30 px-2 py-0.5 text-[10px] font-medium tabular-nums text-brand-primary ring-1 ring-white/10 sm:text-[11px]">
+                {weekProgressPct}%
               </span>
-              <span className="relative z-1 text-[15px] font-bold tabular-nums leading-none text-white sm:text-base">
-                {formatKcal(total)}
-              </span>
-              <span className="relative z-1 line-clamp-2 text-[11px] font-semibold leading-snug text-white sm:text-[11px]">
-                {effective > 0 ? `meta ${formatKcal(effective)}` : '—'}
-              </span>
-              {met ? (
-                <span
-                  className={[
-                    'relative z-1 flex h-6 w-6 items-center justify-center rounded-full text-white sm:h-5 sm:w-5',
-                    active
-                      ? 'bg-brand-primary/35 shadow-sm ring-1 ring-brand-primary/40'
-                      : 'bg-brand-secondary/35 shadow-sm ring-1 ring-brand-secondary/45',
-                  ].join(' ')}
-                >
-                  <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" aria-hidden />
-                </span>
-              ) : (
-                <span
-                  className={[
-                    'relative z-1 h-6 w-6 shrink-0 rounded-full border-2 bg-surface-2/80 sm:h-5 sm:w-5',
-                    active ? 'border-brand-primary/50' : 'border-brand-secondary/50',
-                  ].join(' ')}
-                  aria-hidden
-                />
-              )}
-            </>
-          );
+            }
+          />
 
-          if (isPast) {
-            return (
-              <button
-                key={dateISO}
-                type="button"
-                className={shellClass}
-                aria-label={`${label}, ${formatKcal(total)} kcal. Toque para registar ou corrigir.`}
-                onClick={() => setEditingDate(dateISO)}
-              >
-                {inner}
-              </button>
-            );
-          }
-
-          return (
-            <div key={dateISO} className={shellClass}>
-              {inner}
+          <div className="shrink-0 space-y-1">
+            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+              <span className="text-lg font-semibold tabular-nums leading-none text-text-primary sm:text-xl">
+                {formatKcal(weekTotalKcal)}
+              </span>
+              <span className="text-[11px] text-text-muted sm:text-xs">
+                / {weeklyTarget > 0 ? formatKcal(weeklyTarget) : '—'}
+              </span>
             </div>
-          );
-        })}
-      </div>
-      <div className="mt-3 space-y-2 text-[11px] leading-relaxed text-white sm:mt-4 sm:space-y-1.5 sm:text-[13px]">
-        <p className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-1.5 sm:gap-y-1">
-          <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
-            <span className="font-semibold">Legenda:</span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-2 w-2 shrink-0 rounded-sm bg-brand-primary" aria-hidden />
-              meta diária
+            <div
+              className="h-1 overflow-hidden rounded-full bg-black/35 ring-1 ring-inset ring-white/10"
+              role="progressbar"
+              aria-valuenow={weekProgressPct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Progresso das calorias na semana"
+            >
+              <div
+                className="h-full rounded-full bg-linear-to-r from-brand-primary to-brand-secondary transition-[width] duration-500 ease-out"
+                style={{ width: `${Math.min(100, Math.max(0, weekProgressPct))}%` }}
+              />
+            </div>
+          </div>
+
+          <div
+            className="grid min-h-0 shrink-0 auto-rows-min grid-cols-7 gap-1.5"
+            role="group"
+            aria-label={weekAriaLabel}
+          >
+            {weekDates.map((dateISO) => renderDayCell(dateISO, true))}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="mb-2 flex items-center gap-2 sm:mb-3">
+            <span
+              className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-brand-primary to-brand-secondary sm:h-8"
+              aria-hidden
+            />
+            <h3 className="text-sm font-semibold text-white sm:text-base">Esta semana</h3>
+          </div>
+          <div
+            className={[
+              '-mx-0.5 flex min-w-0 flex-nowrap gap-2 overflow-x-auto overscroll-x-contain px-0.5 pb-2 pt-0.5 [-webkit-overflow-scrolling:touch]',
+              'snap-x snap-mandatory [scrollbar-width:thin]',
+              'sm:mx-0 sm:gap-2.5 sm:px-0',
+            ].join(' ')}
+          >
+            {weekDates.map((dateISO) => renderDayCell(dateISO, false))}
+          </div>
+        </>
+      )}
+      {!embed ? (
+        <div className="mt-3 space-y-2 text-[11px] leading-relaxed text-white sm:mt-4 sm:space-y-1.5 sm:text-[13px]">
+          <p className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-1.5 sm:gap-y-1">
+            <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
+              <span className="font-semibold">Legenda:</span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 shrink-0 rounded-sm bg-brand-primary" aria-hidden />
+                meta diária
+              </span>
             </span>
-          </span>
-          <span className="hidden text-white/80 sm:inline" aria-hidden>
-            ·
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 shrink-0 rounded-sm bg-brand-secondary" aria-hidden />
-            saldo semanal (rollover).
-          </span>
-        </p>
-        <p>
-          <span className="font-medium">Dias antes de hoje</span> são clicáveis: adicione kcal ou desfaça o
-          último registo desse dia.
-        </p>
-      </div>
+            <span className="hidden text-white/80 sm:inline" aria-hidden>
+              ·
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-2 w-2 shrink-0 rounded-sm bg-brand-secondary" aria-hidden />
+              saldo semanal (rollover).
+            </span>
+          </p>
+          <p>
+            <span className="font-medium">Dias antes de hoje</span> são clicáveis: adicione kcal ou desfaça o
+            último registo desse dia.
+          </p>
+        </div>
+      ) : null}
 
       <Modal
         isOpen={editingDate != null}

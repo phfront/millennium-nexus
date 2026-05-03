@@ -10,7 +10,8 @@ import { useFinanceSpreadsheetSettings } from '@/contexts/FinanceSpreadsheetSett
 import { SpreadsheetColumnFillModal } from '@/components/finance/features/spreadsheet-column-fill-modal/SpreadsheetColumnFillModal';
 import type { IncomeSource } from '@/types/finance';
 
-const DATA_COL = 'w-[128px] min-w-[128px] max-w-[128px]';
+/** `table-auto` + nowrap: columns grow with label/value; floor fits typical BRL in `text-xs`. */
+const SPREADSHEET_DATA_COL = 'min-w-40 whitespace-nowrap px-2';
 
 function IncomeSourceManageRow({
   source,
@@ -144,12 +145,12 @@ export function IncomeSheet() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full table-fixed text-xs border-collapse">
+        <table className="w-max min-w-full table-auto text-xs border-collapse">
           <colgroup>
             <col className="w-20" />
-            <col className="w-[118px]" />
+            <col className="min-w-40" />
             {activeSources.map((s) => (
-              <col key={s.id} className={DATA_COL} />
+              <col key={s.id} className="min-w-40" />
             ))}
           </colgroup>
           <thead>
@@ -157,29 +158,26 @@ export function IncomeSheet() {
               <th className="sticky left-0 z-10 bg-surface-3 text-left px-2 py-2 font-medium text-text-muted border-b border-border whitespace-nowrap">
                 Mês
               </th>
-              <th className="text-right px-2 py-2 font-medium text-text-muted border-b border-border bg-surface-3/80 min-w-[118px]">
+              <th className="text-right px-2 py-2 font-medium text-text-muted border-b border-border bg-surface-3/80 min-w-40 whitespace-nowrap">
                 Total
               </th>
               {activeSources.map((s) => (
-                <th key={s.id} className={`align-top border-b border-border bg-surface-3 ${DATA_COL} px-2 py-2`}>
-                  <div className="flex flex-col gap-2 min-h-13">
-                    <div className="flex items-start justify-between gap-1">
-                      <span
-                        className="text-left text-sm font-semibold text-text-primary leading-snug wrap-break-word line-clamp-3"
-                        title={s.name}
-                      >
+                <th key={s.id} className={`align-top border-b border-border bg-surface-3 ${SPREADSHEET_DATA_COL} py-2`}>
+                  <div className="relative min-h-13">
+                    <button
+                      type="button"
+                      className="absolute left-0 top-0 z-10 p-1 rounded-md text-text-muted hover:text-brand-primary hover:bg-surface-4 transition-colors cursor-pointer"
+                      title="Preencher todos os meses visíveis com o mesmo valor"
+                      aria-label={`Preencher coluna ${s.name} em todos os meses`}
+                      onClick={() => setColumnFillTarget({ sourceId: s.id, name: s.name })}
+                    >
+                      <Columns2 size={16} strokeWidth={2} />
+                    </button>
+                    <span className="block w-full pl-8 text-right text-sm font-semibold text-text-primary leading-snug">
+                      <span className="whitespace-nowrap" title={s.name}>
                         {s.name}
                       </span>
-                      <button
-                        type="button"
-                        className="shrink-0 p-1 rounded-md text-text-muted hover:text-brand-primary hover:bg-surface-4 transition-colors cursor-pointer"
-                        title="Preencher todos os meses visíveis com o mesmo valor"
-                        aria-label={`Preencher coluna ${s.name} em todos os meses`}
-                        onClick={() => setColumnFillTarget({ sourceId: s.id, name: s.name })}
-                      >
-                        <Columns2 size={16} strokeWidth={2} />
-                      </button>
-                    </div>
+                    </span>
                   </div>
                 </th>
               ))}
@@ -196,11 +194,11 @@ export function IncomeSheet() {
                   <td className="sticky left-0 z-10 px-2 py-1.5 font-medium text-text-secondary border-b border-border/50 bg-inherit whitespace-nowrap">
                     {formatMonth(month)}
                   </td>
-                  <td className="px-2 py-1.5 text-right font-semibold text-text-primary border-b border-border/50">
+                  <td className="px-2 py-1.5 text-right font-semibold text-text-primary border-b border-border/50 min-w-40 whitespace-nowrap">
                     {rowTotal > 0 ? formatBRL(rowTotal) : <span className="text-text-muted">—</span>}
                   </td>
                   {activeSources.map((s) => (
-                    <td key={s.id} className={`px-1 py-1 border-b border-border/50 min-w-0 ${DATA_COL}`}>
+                    <td key={s.id} className={`border-b border-border/50 ${SPREADSHEET_DATA_COL} py-1`}>
                       <InlineAmountCell
                         value={getIncomeCellAmount(s, month)}
                         onSave={(v) => handleSave(s.id, month, v)}

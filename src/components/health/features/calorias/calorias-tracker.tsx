@@ -24,6 +24,8 @@ export type CaloriasTrackerProps = {
   todayTotal: number;
   todayRemaining: number;
   progressToday: number;
+  /** Quando false, sem cartão próprio (ex.: widget na grelha da home). */
+  hasBackground?: boolean;
 };
 
 export function CaloriasTracker({
@@ -40,6 +42,7 @@ export function CaloriasTracker({
   todayTotal,
   todayRemaining,
   progressToday,
+  hasBackground = true,
 }: CaloriasTrackerProps) {
   const { toast } = useToast();
   const [showOther, setShowOther] = useState(false);
@@ -49,6 +52,12 @@ export function CaloriasTracker({
 
   const todayLogs = logs.filter((l) => l.logged_date === today);
   const subtitle = `${formatActiveDaysLabel(settings.active_days)} · ${formatKcal(settings.daily_target_kcal)}/dia · ${formatKcal(weeklyTargetKcal)}/sem`;
+  const subtitleShort = `${formatKcal(settings.daily_target_kcal)}/dia · ${formatKcal(weeklyTargetKcal)}/sem`;
+  const widgetSubtitle = `${subtitleShort} · Sem.: ${formatKcal(weekTotalKcal)} / ${formatKcal(weeklyTargetKcal)}${
+    weeklyRemaining <= 0 ? ' · Meta semanal OK' : ` · Faltam ${formatKcal(weeklyRemaining)} na sem.`
+  }`;
+  /** Mesmo padrão de grelha que `WaterTracker` na home (`hasBackground={false}`). */
+  const widgetLayout = !hasBackground;
 
   async function handleAdd(amount: number) {
     try {
@@ -85,14 +94,29 @@ export function CaloriasTracker({
   }
 
   if (isLoading) {
-    return <Skeleton variant="block" className="h-full min-h-[220px] w-full rounded-2xl" />;
+    return (
+      <Skeleton
+        variant="block"
+        className={[
+          widgetLayout ? 'h-full min-h-0 w-full' : 'h-full min-h-[220px] w-full rounded-2xl',
+        ].join(' ')}
+      />
+    );
   }
 
   const fillPct = Math.min(100, Math.max(0, progressToday));
   const lastToday = todayLogs.length > 0 ? todayLogs[todayLogs.length - 1].amount_kcal : 0;
 
+  const shellClass = [
+    'relative flex flex-col overflow-hidden',
+    widgetLayout ? 'h-full min-h-0' : 'min-h-[220px]',
+    hasBackground ? 'rounded-2xl border border-white/10 bg-surface-2/25 shadow-sm backdrop-blur-md' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <div className="relative flex min-h-[220px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface-2/25 shadow-sm backdrop-blur-md">
+    <div className={shellClass}>
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 transition-[height] duration-700 ease-out"
         style={{ height: `${fillPct}%` }}
@@ -127,28 +151,36 @@ export function CaloriasTracker({
           variant="primary"
           icon={<Flame className="h-3.5 w-3.5" aria-hidden />}
           title="Calorias"
-          subtitle={subtitle}
+          subtitle={widgetLayout ? widgetSubtitle : subtitle}
           trailing={
-            <span className="rounded-full bg-brand-primary/20 px-2 py-0.5 text-[10px] font-medium tabular-nums text-brand-primary ring-1 ring-brand-primary/25 sm:text-[11px]">
+            <span
+              className={
+                widgetLayout
+                  ? 'rounded-full bg-black/30 px-2 py-0.5 text-[10px] font-medium tabular-nums text-brand-primary ring-1 ring-white/10 sm:text-[11px]'
+                  : 'rounded-full bg-brand-primary/20 px-2 py-0.5 text-[10px] font-medium tabular-nums text-brand-primary ring-1 ring-brand-primary/25 sm:text-[11px]'
+              }
+            >
               {progressToday}%
             </span>
           }
         />
 
-        <div className="flex flex-wrap items-center gap-2">
-          {weeklyRemaining <= 0 ? (
-            <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-emerald-500/25">
-              Meta semanal atingida
-            </span>
-          ) : (
-            <span className="rounded-full bg-surface-3 px-2.5 py-1 text-xs font-medium text-text-secondary ring-1 ring-white/10">
-              <span className="tabular-nums text-text-primary">
-                Faltam {formatKcal(weeklyRemaining)} kcal
+        {widgetLayout ? null : (
+          <div className="flex flex-wrap items-center gap-2">
+            {weeklyRemaining <= 0 ? (
+              <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-emerald-500/25">
+                Meta semanal atingida
               </span>
-              <span className="ml-1 text-[10px] opacity-70">na semana</span>
-            </span>
-          )}
-        </div>
+            ) : (
+              <span className="rounded-full bg-surface-3 px-2.5 py-1 text-xs font-medium text-text-secondary ring-1 ring-white/10">
+                <span className="tabular-nums text-text-primary">
+                  Faltam {formatKcal(weeklyRemaining)} kcal
+                </span>
+                <span className="ml-1 text-[10px] opacity-70">na semana</span>
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="shrink-0 space-y-1">
           <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
@@ -156,14 +188,16 @@ export function CaloriasTracker({
               {formatKcal(todayTotal)}
             </span>
             <span className="text-[11px] text-text-muted sm:text-xs">
-              / {effectiveTargetToday > 0 ? `${formatKcal(effectiveTargetToday)}` : '—'} kcal hoje
+              / {effectiveTargetToday > 0 ? `${formatKcal(effectiveTargetToday)}` : '—'}
+              {!widgetLayout ? ' kcal hoje' : ''}
             </span>
           </div>
-          {effectiveTargetToday > 0 && (
+          {!widgetLayout && effectiveTargetToday > 0 ? (
             <p className="text-[10px] text-text-muted sm:text-[11px]">
-              Restam <span className="tabular-nums font-medium text-text-secondary">{formatKcal(todayRemaining)}</span> kcal para a meta de hoje
+              Restam <span className="tabular-nums font-medium text-text-secondary">{formatKcal(todayRemaining)}</span>{' '}
+              kcal para a meta de hoje
             </p>
-          )}
+          ) : null}
           <div
             className="h-1 overflow-hidden rounded-full bg-black/35 ring-1 ring-inset ring-white/10"
             role="progressbar"
@@ -177,19 +211,27 @@ export function CaloriasTracker({
               style={{ width: `${fillPct}%` }}
             />
           </div>
-          <p className="text-[10px] text-text-muted tabular-nums">
-            Semana: {formatKcal(weekTotalKcal)} / {formatKcal(weeklyTargetKcal)} kcal
-          </p>
+          {!widgetLayout ? (
+            <p className="text-[10px] text-text-muted tabular-nums">
+              Semana: {formatKcal(weekTotalKcal)} / {formatKcal(weeklyTargetKcal)} kcal
+            </p>
+          ) : null}
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-4">
+        <div
+          className={[
+            'grid min-h-0 flex-1 gap-2',
+            widgetLayout ? 'grid-cols-3' : 'grid-cols-3 sm:grid-cols-4',
+          ].join(' ')}
+        >
           {QUICK_ADD.map((kcal) => (
             <button
               key={kcal}
               type="button"
               onClick={() => void handleAdd(kcal)}
               className={[
-                'flex min-h-0 min-w-0 cursor-pointer flex-col items-center justify-center rounded-xl py-2',
+                'flex min-h-0 min-w-0 cursor-pointer flex-col items-center justify-center rounded-xl',
+                widgetLayout ? 'min-h-10 py-2.5' : 'py-2',
                 'border border-white/12 bg-white/6 text-center',
                 'text-xs font-semibold tabular-nums leading-none text-text-primary sm:text-sm',
                 'transition hover:border-brand-primary/40 hover:bg-brand-primary/12 hover:text-text-primary',
@@ -203,7 +245,8 @@ export function CaloriasTracker({
             type="button"
             onClick={() => setShowOther(true)}
             className={[
-              'flex min-h-0 min-w-0 cursor-pointer flex-col items-center justify-center rounded-xl py-2',
+              'flex min-h-0 min-w-0 cursor-pointer flex-col items-center justify-center rounded-xl',
+              widgetLayout ? 'min-h-10 py-2.5' : 'py-2',
               'border border-white/12 bg-white/6 text-center',
               'text-xs font-semibold leading-none text-text-primary sm:text-sm',
               'transition hover:border-brand-primary/40 hover:bg-brand-primary/12 hover:text-text-primary',
@@ -222,7 +265,8 @@ export function CaloriasTracker({
                 : 'Desfazer último registo (indisponível sem histórico hoje)'
             }
             className={[
-              'flex min-h-0 min-w-0 cursor-pointer flex-col items-center justify-center rounded-xl py-2',
+              'flex min-h-0 min-w-0 cursor-pointer flex-col items-center justify-center rounded-xl',
+              widgetLayout ? 'col-span-2 min-h-10 py-2.5' : 'py-2',
               'border border-white/12 bg-white/6 text-center',
               'text-xs font-semibold leading-none text-text-primary sm:text-sm',
               'transition hover:border-amber-400/35 hover:bg-amber-500/12 hover:text-amber-50',

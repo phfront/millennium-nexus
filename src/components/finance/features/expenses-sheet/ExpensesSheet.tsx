@@ -25,7 +25,8 @@ import { SpreadsheetColumnFillModal } from '@/components/finance/features/spread
 import { ExpensePaidNoteModal } from '@/components/finance/features/expense-paid-note-modal/ExpensePaidNoteModal';
 import type { ExpenseCategory, ExpenseItem } from '@/types/finance';
 
-const DATA_COL = 'w-[128px] min-w-[128px] max-w-[128px]';
+/** `table-auto` + nowrap: columns grow with label/value; floor fits typical BRL in `text-xs`. */
+const SPREADSHEET_DATA_COL = 'min-w-40 whitespace-nowrap px-2';
 
 const UNCATEGORIZED_ID = '__uncategorized__' as const;
 
@@ -454,22 +455,24 @@ export function ExpensesSheet() {
         <table
           className={
             expenseColCount > 0
-              ? 'w-full table-fixed text-xs border-collapse'
+              ? 'w-max min-w-full table-auto text-xs border-collapse'
               : 'w-max max-w-full text-xs border-collapse'
           }
         >
           <colgroup>
             <col className="w-20" />
-            <col className="w-[118px]" />
+            <col className="min-w-40" />
             {expenseColCount > 0 &&
-              Array.from({ length: expenseColCount }, (_, i) => <col key={i} className={DATA_COL} />)}
+              Array.from({ length: expenseColCount }, (_, i) => (
+                <col key={i} className="min-w-40" />
+              ))}
           </colgroup>
           <thead>
             <tr className="bg-surface-3">
               <th className="sticky left-0 z-10 bg-surface-3 text-left px-2 py-2 font-medium text-text-muted border-b border-border whitespace-nowrap">
                 Mês
               </th>
-              <th className="text-right px-2 py-2 font-medium text-text-muted border-b border-border min-w-[118px] bg-surface-3/80">
+              <th className="text-right px-2 py-2 font-medium text-text-muted border-b border-border min-w-40 whitespace-nowrap bg-surface-3/80">
                 Total
               </th>
               {expenseDisplayGroups.map((g) => {
@@ -477,13 +480,17 @@ export function ExpensesSheet() {
                 return isCollapsed ? (
                   <th
                     key={g.id}
-                    className={`text-right px-3 py-2 font-semibold text-text-primary border-b border-border cursor-pointer hover:bg-surface-4 ${DATA_COL}`}
+                    rowSpan={2}
+                    className="cursor-pointer border-b border-border bg-surface-3 px-2 py-2 text-right font-semibold text-text-primary hover:bg-surface-4 min-w-40 whitespace-nowrap align-top"
                     onClick={() => toggleCat(g.id)}
                     colSpan={1}
+                    title={`${g.name} — expandir itens`}
                   >
-                    <div className="flex items-center justify-end gap-1">
-                      <ChevronRight size={12} />
-                      {g.name}
+                    <div className="flex w-full items-center justify-end gap-2 text-sm font-semibold">
+                      <ChevronRight size={16} strokeWidth={2} className="shrink-0 text-text-secondary" />
+                      <span className="truncate" title={g.name}>
+                        {g.name}
+                      </span>
                     </div>
                   </th>
                 ) : (
@@ -492,14 +499,14 @@ export function ExpensesSheet() {
                       key={idx === 0 ? `cat-${g.id}` : `cat-${g.id}-${item.id}`}
                       className={
                         idx === 0
-                          ? `text-right px-3 py-2 font-semibold text-text-primary border-b border-border cursor-pointer hover:bg-surface-4 ${DATA_COL}`
-                          : `border-b border-border bg-surface-3 ${DATA_COL}`
+                          ? `text-right py-2 font-semibold text-text-primary border-b border-border cursor-pointer hover:bg-surface-4 ${SPREADSHEET_DATA_COL}`
+                          : `border-b border-border bg-surface-3 ${SPREADSHEET_DATA_COL} py-2`
                       }
                       onClick={idx === 0 ? () => toggleCat(g.id) : undefined}
                     >
                       {idx === 0 ? (
-                        <div className="flex items-center justify-end gap-1">
-                          <ChevronDown size={12} />
+                        <div className="flex items-center justify-end gap-2 whitespace-nowrap text-sm font-semibold">
+                          <ChevronDown size={16} strokeWidth={2} className="shrink-0 text-text-secondary" />
                           {g.name}
                         </div>
                       ) : null}
@@ -511,37 +518,34 @@ export function ExpensesSheet() {
             {/* Sub-header com nomes dos itens */}
             <tr className="bg-surface-2">
               <th className="sticky left-0 z-10 bg-surface-2 border-b border-border whitespace-nowrap" />
-              <th className="border-b border-border min-w-[118px]" />
+              <th className="border-b border-border min-w-40" />
               {expenseDisplayGroups.map((g) => {
                 if (collapsedCats.has(g.id)) return null;
                 return g.items.map((item) => (
                   <th
                     key={item.id}
-                    className={`align-top border-b border-border bg-surface-2 ${DATA_COL} px-2 py-2`}
+                    className={`align-top border-b border-border bg-surface-2 ${SPREADSHEET_DATA_COL} py-2`}
                   >
-                    <div className="flex flex-col gap-2 min-h-13">
-                      <div className="flex items-start justify-between gap-1">
-                        <span
-                          className="text-left text-sm font-semibold text-text-primary leading-snug wrap-break-word line-clamp-3"
-                          title={item.name}
-                        >
+                    <div className="relative min-h-13">
+                      <button
+                        type="button"
+                        className="absolute left-0 top-0 z-10 p-1 rounded-md text-text-muted hover:text-brand-primary hover:bg-surface-3 transition-colors cursor-pointer"
+                        title="Preencher todos os meses visíveis com o mesmo valor"
+                        aria-label={`Preencher coluna ${item.name} em todos os meses`}
+                        onClick={() => setColumnFillTarget({ itemId: item.id, name: item.name })}
+                      >
+                        <Columns2 size={16} strokeWidth={2} />
+                      </button>
+                      <span className="block w-full pl-8 text-right text-sm font-semibold text-text-primary leading-snug">
+                        <span className="whitespace-nowrap" title={item.name}>
                           {item.name}
-                          {item.due_day != null && (
-                            <span className="block text-[10px] font-normal text-text-muted mt-0.5">
-                              Venc. dia {item.due_day}
-                            </span>
-                          )}
                         </span>
-                        <button
-                          type="button"
-                          className="shrink-0 p-1 rounded-md text-text-muted hover:text-brand-primary hover:bg-surface-3 transition-colors cursor-pointer"
-                          title="Preencher todos os meses visíveis com o mesmo valor"
-                          aria-label={`Preencher coluna ${item.name} em todos os meses`}
-                          onClick={() => setColumnFillTarget({ itemId: item.id, name: item.name })}
-                        >
-                          <Columns2 size={16} strokeWidth={2} />
-                        </button>
-                      </div>
+                        {item.due_day != null && (
+                          <span className="mt-0.5 block text-[10px] font-normal text-text-muted whitespace-nowrap">
+                            Venc. dia {item.due_day}
+                          </span>
+                        )}
+                      </span>
                     </div>
                   </th>
                 ));
@@ -559,7 +563,7 @@ export function ExpensesSheet() {
                   <td className="sticky left-0 z-10 px-2 py-1.5 font-medium text-text-secondary border-b border-border/50 bg-inherit whitespace-nowrap">
                     {formatMonth(month)}
                   </td>
-                  <td className="px-2 py-1.5 text-right font-semibold text-text-primary border-b border-border/50 min-w-[118px]">
+                  <td className="px-2 py-1.5 text-right font-semibold text-text-primary border-b border-border/50 min-w-40 whitespace-nowrap">
                     {rowTotal > 0 ? formatBRL(rowTotal) : <span className="text-text-muted">—</span>}
                   </td>
                   {expenseDisplayGroups.map((g) => {
@@ -570,7 +574,7 @@ export function ExpensesSheet() {
                       return (
                         <td
                           key={g.id}
-                          className="px-3 py-1.5 text-right font-semibold text-text-primary border-b border-border/50"
+                          className="min-w-40 whitespace-nowrap px-2 py-1.5 text-right font-semibold text-text-primary border-b border-border/50"
                         >
                           {catTotal > 0 ? formatBRL(catTotal) : <span className="text-text-muted">—</span>}
                         </td>
@@ -580,9 +584,9 @@ export function ExpensesSheet() {
                       const entry = getEntry(item.id, month);
                       const effective = getEffectiveExpenseAmount(item.id, month);
                       return (
-                        <td key={item.id} className={`px-1 py-1 border-b border-border/50 min-w-0 ${DATA_COL}`}>
+                        <td key={item.id} className={`border-b border-border/50 ${SPREADSHEET_DATA_COL} py-1`}>
                           <div
-                            className="min-w-0 w-full cursor-pointer select-none [-webkit-touch-callout:none]"
+                            className="w-full cursor-pointer select-none [-webkit-touch-callout:none]"
                             onContextMenu={
                               effective > 0
                                 ? (e) => {

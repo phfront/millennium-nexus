@@ -4,6 +4,8 @@ export type DashboardWidgetKey =
   | 'health_nutrition'
   | 'health_nutrition_summary'
   | 'health_meals'
+  | 'health_calorias'
+  | 'health_calorias_week'
   | 'daily_goals_summary'
   | 'daily_goals_carousel';
 
@@ -72,6 +74,34 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogItem[] = [
     maxH: 5,
     defaultW: { lg: 2, md: 2, sm: 1 },
     defaultH: { lg: 3, md: 3, sm: 3 },
+  },
+  {
+    key: 'health_calorias',
+    title: 'Calorias',
+    description: 'Registo rapido de calorias, meta do dia e totais da semana.',
+    moduleSlug: 'health',
+    defaultVisible: false,
+    defaultPosition: 5,
+    minW: 1,
+    minH: 1,
+    maxW: 3,
+    maxH: 4,
+    defaultW: { lg: 1, md: 1, sm: 1 },
+    defaultH: { lg: 1, md: 1, sm: 1 },
+  },
+  {
+    key: 'health_calorias_week',
+    title: 'Esta semana — calorias',
+    description: 'Grelha da semana com metas, rollover e toque em dias passados.',
+    moduleSlug: 'health',
+    defaultVisible: false,
+    defaultPosition: 6,
+    minW: 1,
+    minH: 1,
+    maxW: 3,
+    maxH: 4,
+    defaultW: { lg: 3, md: 2, sm: 1 },
+    defaultH: { lg: 1, md: 1, sm: 1 },
   },
   {
     key: 'daily_goals_summary',
