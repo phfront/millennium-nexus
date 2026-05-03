@@ -21,12 +21,32 @@ import {
   toMonthDate,
 } from '@/lib/finance/finance';
 import { useFinanceSpreadsheetSettings } from '@/contexts/FinanceSpreadsheetSettingsContext';
+import { cn } from '@/lib/utils';
 import { SpreadsheetColumnFillModal } from '@/components/finance/features/spreadsheet-column-fill-modal/SpreadsheetColumnFillModal';
 import { ExpensePaidNoteModal } from '@/components/finance/features/expense-paid-note-modal/ExpensePaidNoteModal';
+import { CategoryColorPicker } from '@/components/finance/features/expenses-sheet/CategoryColorPicker';
 import type { ExpenseCategory, ExpenseItem } from '@/types/finance';
 
 /** `table-auto` + nowrap: columns grow with label/value; floor fits typical BRL in `text-xs`. */
 const SPREADSHEET_DATA_COL = 'min-w-40 whitespace-nowrap px-2';
+
+function hexToRgba(hex: string, alpha: number): string {
+  const t = hex.trim().replace('#', '');
+  if (t.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(t)) return `rgba(100, 116, 139, ${alpha})`;
+  const r = parseInt(t.slice(0, 2), 16);
+  const g = parseInt(t.slice(2, 4), 16);
+  const b = parseInt(t.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function categoryTint(color: string | null | undefined) {
+  if (!color) return { band: undefined as string | undefined, cell: undefined as string | undefined, accent: undefined as string | undefined };
+  return {
+    band: hexToRgba(color, 0.18),
+    cell: hexToRgba(color, 0.08),
+    accent: color,
+  };
+}
 
 const UNCATEGORIZED_ID = '__uncategorized__' as const;
 
@@ -35,6 +55,7 @@ type ExpenseDisplayGroup = {
   name: string;
   items: ExpenseItem[];
   isUncategorized: boolean;
+  color: string | null;
 };
 
 function currentMonthInputValue(): string {
@@ -96,7 +117,7 @@ function ManageExpenseItemList({
   }
   return (
     <ul
-      className="mt-1.5 overflow-hidden rounded-lg border border-border/80 bg-surface-2/80"
+      className="mt-1.5 rounded-lg border border-border/80 bg-surface-2/80"
       aria-label="Itens da categoria"
     >
       {itemsList.map((item) => (
@@ -134,9 +155,15 @@ export function ExpensesSheet() {
   const [columnFillTarget, setColumnFillTarget] = useState<{ itemId: string; name: string } | null>(null);
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
   const [showManage, setShowManage] = useState(false);
+  /** Incrementado ao abrir Gerenciar para reinicializar o accordion (evita bug com Strict Mode). */
+  const [manageListSession, setManageListSession] = useState(0);
+  const [showNewCategoryModal, setShowNewCategoryModal] = useState(false);
+  /** Categorias expandidas no modal Gerenciar (accordion). */
+  const [manageExpandedCats, setManageExpandedCats] = useState<Set<string>>(() => new Set());
   /** list = itens + novo; form = criar ou editar (mesmo formulário) */
   const [manageStep, setManageStep] = useState<'list' | 'form'>('list');
   const [newCatName, setNewCatName] = useState('');
+  const [newCatColor, setNewCatColor] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [formCatId, setFormCatId] = useState('');
@@ -150,6 +177,7 @@ export function ExpensesSheet() {
   const [formActive, setFormActive] = useState(true);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState('');
+  const [editingCategoryColor, setEditingCategoryColor] = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<{
     x: number;
     y: number;
@@ -158,6 +186,12 @@ export function ExpensesSheet() {
     isPaid: boolean;
   } | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
+  /** Accordion: full expand on Gerenciar open; same session only expands newly added ids (keeps user collapse). */
+  const manageAccordionInitRef = useRef<{
+    session: number;
+    dataKey: string;
+    lastCanonical: Set<string>;
+  }>({ session: -1, dataKey: '', lastCanonical: new Set() });
   const [paidNoteTarget, setPaidNoteTarget] = useState<{ itemId: string; month: string } | null>(null);
   const [paidNoteBusy, setPaidNoteBusy] = useState(false);
 
@@ -176,7 +210,13 @@ export function ExpensesSheet() {
     for (const cat of categories) {
       const catItems = activeItems.filter((i) => i.category_id === cat.id);
       if (catItems.length > 0) {
-        out.push({ id: cat.id, name: cat.name, items: catItems, isUncategorized: false });
+        out.push({
+          id: cat.id,
+          name: cat.name,
+          items: catItems,
+          isUncategorized: false,
+          color: cat.color ?? null,
+        });
       }
     }
     const uncat = activeItems.filter((i) => !i.category_id);
@@ -186,6 +226,7 @@ export function ExpensesSheet() {
         name: 'Sem categoria',
         items: uncat,
         isUncategorized: true,
+        color: null,
       });
     }
     return out;
@@ -199,10 +240,61 @@ export function ExpensesSheet() {
     );
   }, [expenseDisplayGroups, collapsedCats]);
 
+  /** Re-sync accordion when category ids / uncat flag change, without resetting on unrelated item edits. */
+  const manageCategoryDataKey = useMemo(
+    () =>
+      `${categories.map((c) => c.id).sort().join('|')}|${items.some((i) => !i.category_id) ? '1' : '0'}`,
+    [categories, items],
+  );
+
   useEffect(() => {
     if (isLoading) return;
     void ensureRecurringExpenseEntriesForMonths(allMonths);
   }, [isLoading, allMonthsKey, itemsKey, ensureRecurringExpenseEntriesForMonths]);
+
+  useEffect(() => {
+    if (!showManage) return;
+
+    const canonical = new Set<string>(categories.map((c) => c.id));
+    if (items.some((i) => !i.category_id)) canonical.add(UNCATEGORIZED_ID);
+
+    const ref = manageAccordionInitRef.current;
+    const isNewSession = ref.session !== manageListSession;
+
+    if (isNewSession) {
+      ref.session = manageListSession;
+      ref.dataKey = manageCategoryDataKey;
+      ref.lastCanonical = new Set(canonical);
+      setManageExpandedCats(new Set(canonical));
+      return;
+    }
+
+    if (ref.dataKey === manageCategoryDataKey) return;
+    ref.dataKey = manageCategoryDataKey;
+
+    const prevCanon = ref.lastCanonical;
+    ref.lastCanonical = new Set(canonical);
+
+    setManageExpandedCats((prev) => {
+      const next = new Set(prev);
+      for (const id of canonical) {
+        if (!prevCanon.has(id)) next.add(id);
+      }
+      for (const id of [...next]) {
+        if (!canonical.has(id)) next.delete(id);
+      }
+      return next;
+    });
+  }, [showManage, manageListSession, manageCategoryDataKey, categories, items]);
+
+  function toggleManageAccordion(catId: string) {
+    setManageExpandedCats((prev) => {
+      const n = new Set(prev);
+      if (n.has(catId)) n.delete(catId);
+      else n.add(catId);
+      return n;
+    });
+  }
 
   function toggleCat(catId: string) {
     setCollapsedCats((prev) => {
@@ -287,8 +379,19 @@ export function ExpensesSheet() {
     setFormActive(true);
   }
 
-  function openNewItemForm() {
-    resetItemForm();
+  function openNewItemForm(preselectedCategoryId?: string) {
+    setEditingItemId(null);
+    setFormName('');
+    const cur = currentMonthInputValue();
+    setFormMonthFrom(cur);
+    setFormMonthTo(cur);
+    setFormDefaultAmount('');
+    setFormRecurring(false);
+    setFormDueDay('');
+    setFormActive(true);
+    setFormCatId(
+      preselectedCategoryId !== undefined ? preselectedCategoryId : (categories[0]?.id ?? ''),
+    );
     setManageStep('form');
   }
 
@@ -306,8 +409,13 @@ export function ExpensesSheet() {
     if (!newCatName.trim()) return;
     setSaving(true);
     try {
-      await addCategory(newCatName.trim());
+      const row = await addCategory(newCatName.trim(), newCatColor ?? undefined);
+      if (row?.id) {
+        setManageExpandedCats((prev) => new Set(prev).add(row.id));
+      }
       setNewCatName('');
+      setNewCatColor(null);
+      setShowNewCategoryModal(false);
       toast.success('Categoria adicionada');
       await refetch();
     } catch {
@@ -321,9 +429,13 @@ export function ExpensesSheet() {
     if (!editingCategoryId || !editingCategoryName.trim()) return;
     setSaving(true);
     try {
-      await updateCategory(editingCategoryId, { name: editingCategoryName.trim() });
+      await updateCategory(editingCategoryId, {
+        name: editingCategoryName.trim(),
+        color: editingCategoryColor,
+      });
       setEditingCategoryId(null);
       setEditingCategoryName('');
+      setEditingCategoryColor(null);
       toast.success('Categoria atualizada');
       await refetch();
     } catch {
@@ -336,6 +448,7 @@ export function ExpensesSheet() {
   function cancelCategoryEdit() {
     setEditingCategoryId(null);
     setEditingCategoryName('');
+    setEditingCategoryColor(null);
   }
 
   async function handleDeleteCategory(cat: ExpenseCategory) {
@@ -443,6 +556,7 @@ export function ExpensesSheet() {
           onClick={() => {
             setCtxMenu(null);
             setManageStep('list');
+            setManageListSession((s) => s + 1);
             setShowManage(true);
           }}
           leftIcon={<Settings size={14} />}
@@ -477,41 +591,62 @@ export function ExpensesSheet() {
               </th>
               {expenseDisplayGroups.map((g) => {
                 const isCollapsed = collapsedCats.has(g.id);
+                const tint = g.isUncategorized ? categoryTint(null) : categoryTint(g.color);
                 return isCollapsed ? (
                   <th
                     key={g.id}
                     rowSpan={2}
-                    className="cursor-pointer border-b border-border bg-surface-3 px-2 py-2 text-right font-semibold text-text-primary hover:bg-surface-4 min-w-40 whitespace-nowrap align-top"
+                    className="cursor-pointer border-b border-border bg-surface-3 px-2 py-2 text-left font-semibold text-text-primary hover:bg-surface-4 min-w-40 whitespace-nowrap align-top"
+                    style={{
+                      ...(tint.band ? { backgroundColor: tint.band } : {}),
+                      borderBottomWidth: tint.accent ? 2 : undefined,
+                      borderBottomColor: tint.accent,
+                      borderBottomStyle: tint.accent ? 'solid' : undefined,
+                    }}
                     onClick={() => toggleCat(g.id)}
                     colSpan={1}
                     title={`${g.name} — expandir itens`}
                   >
-                    <div className="flex w-full items-center justify-end gap-2 text-sm font-semibold">
+                    <div className="flex w-full items-center justify-start gap-2 text-sm font-semibold">
                       <ChevronRight size={16} strokeWidth={2} className="shrink-0 text-text-secondary" />
-                      <span className="truncate" title={g.name}>
+                      {tint.accent ? (
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full ring-1 ring-inset ring-border/40"
+                          style={{ backgroundColor: tint.accent }}
+                          aria-hidden
+                        />
+                      ) : null}
+                      <span className="min-w-0 truncate" title={g.name}>
                         {g.name}
                       </span>
                     </div>
                   </th>
                 ) : (
-                  g.items.map((item, idx) => (
-                    <th
-                      key={idx === 0 ? `cat-${g.id}` : `cat-${g.id}-${item.id}`}
-                      className={
-                        idx === 0
-                          ? `text-right py-2 font-semibold text-text-primary border-b border-border cursor-pointer hover:bg-surface-4 ${SPREADSHEET_DATA_COL}`
-                          : `border-b border-border bg-surface-3 ${SPREADSHEET_DATA_COL} py-2`
-                      }
-                      onClick={idx === 0 ? () => toggleCat(g.id) : undefined}
-                    >
-                      {idx === 0 ? (
-                        <div className="flex items-center justify-end gap-2 whitespace-nowrap text-sm font-semibold">
-                          <ChevronDown size={16} strokeWidth={2} className="shrink-0 text-text-secondary" />
-                          {g.name}
-                        </div>
+                  <th
+                    key={`cat-${g.id}`}
+                    colSpan={g.items.length}
+                    className={`bg-surface-3 text-left py-2 font-semibold text-text-primary border-b border-border cursor-pointer hover:bg-surface-4 ${SPREADSHEET_DATA_COL}`}
+                    style={{
+                      ...(tint.band ? { backgroundColor: tint.band } : {}),
+                      borderBottomWidth: tint.accent ? 2 : undefined,
+                      borderBottomColor: tint.accent,
+                      borderBottomStyle: tint.accent ? 'solid' : undefined,
+                    }}
+                    onClick={() => toggleCat(g.id)}
+                    title={`${g.name} — colapsar itens`}
+                  >
+                    <div className="flex min-w-0 items-center justify-start gap-2 whitespace-nowrap text-sm font-semibold">
+                      <ChevronDown size={16} strokeWidth={2} className="shrink-0 text-text-secondary" />
+                      {tint.accent ? (
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full ring-1 ring-inset ring-border/40"
+                          style={{ backgroundColor: tint.accent }}
+                          aria-hidden
+                        />
                       ) : null}
-                    </th>
-                  ))
+                      <span className="min-w-0 truncate">{g.name}</span>
+                    </div>
+                  </th>
                 );
               })}
             </tr>
@@ -521,10 +656,12 @@ export function ExpensesSheet() {
               <th className="border-b border-border min-w-40" />
               {expenseDisplayGroups.map((g) => {
                 if (collapsedCats.has(g.id)) return null;
+                const tint = g.isUncategorized ? categoryTint(null) : categoryTint(g.color);
                 return g.items.map((item) => (
                   <th
                     key={item.id}
                     className={`align-top border-b border-border bg-surface-2 ${SPREADSHEET_DATA_COL} py-2`}
+                    style={tint.cell ? { backgroundColor: tint.cell } : undefined}
                   >
                     <div className="relative min-h-13">
                       <button
@@ -536,7 +673,7 @@ export function ExpensesSheet() {
                       >
                         <Columns2 size={16} strokeWidth={2} />
                       </button>
-                      <span className="block w-full pl-8 text-right text-sm font-semibold text-text-primary leading-snug">
+                      <span className="block w-full pl-8 text-left text-sm font-semibold text-text-primary leading-snug">
                         <span className="whitespace-nowrap" title={item.name}>
                           {item.name}
                         </span>
@@ -567,6 +704,7 @@ export function ExpensesSheet() {
                     {rowTotal > 0 ? formatBRL(rowTotal) : <span className="text-text-muted">—</span>}
                   </td>
                   {expenseDisplayGroups.map((g) => {
+                    const tint = g.isUncategorized ? categoryTint(null) : categoryTint(g.color);
                     if (collapsedCats.has(g.id)) {
                       const catTotal = g.isUncategorized
                         ? getUncategorizedTotal(month)
@@ -575,6 +713,7 @@ export function ExpensesSheet() {
                         <td
                           key={g.id}
                           className="min-w-40 whitespace-nowrap px-2 py-1.5 text-right font-semibold text-text-primary border-b border-border/50"
+                          style={tint.cell ? { backgroundColor: tint.cell } : undefined}
                         >
                           {catTotal > 0 ? formatBRL(catTotal) : <span className="text-text-muted">—</span>}
                         </td>
@@ -584,7 +723,11 @@ export function ExpensesSheet() {
                       const entry = getEntry(item.id, month);
                       const effective = getEffectiveExpenseAmount(item.id, month);
                       return (
-                        <td key={item.id} className={`border-b border-border/50 ${SPREADSHEET_DATA_COL} py-1`}>
+                        <td
+                          key={item.id}
+                          className={`border-b border-border/50 ${SPREADSHEET_DATA_COL} py-1`}
+                          style={tint.cell ? { backgroundColor: tint.cell } : undefined}
+                        >
                           <div
                             className="w-full cursor-pointer select-none [-webkit-touch-callout:none]"
                             onContextMenu={
@@ -675,9 +818,13 @@ export function ExpensesSheet() {
         onClose={() => {
           const wasForm = manageStep === 'form';
           setShowManage(false);
+          setShowNewCategoryModal(false);
           setManageStep('list');
           setEditingCategoryId(null);
           setEditingCategoryName('');
+          setEditingCategoryColor(null);
+          setNewCatName('');
+          setNewCatColor(null);
           resetItemForm();
           if (wasForm) void refetch();
         }}
@@ -690,109 +837,232 @@ export function ExpensesSheet() {
         }
       >
         {manageStep === 'list' ? (
-          <div className="flex flex-col gap-5">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase text-text-muted">Nova categoria</p>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-                <Input
-                  className="min-w-0 flex-1"
-                  placeholder="Nome da categoria"
-                  value={newCatName}
-                  onChange={(e) => setNewCatName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
-                />
-                <Button
-                  className="shrink-0 sm:w-auto"
-                  onClick={handleAddCategory}
-                  disabled={saving}
-                  leftIcon={<Plus size={14} />}
-                >
-                  Criar
-                </Button>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm text-text-secondary">
+                  Agrupa despesas fixas por categoria. Cada categoria pode ter cor na planilha.
+                </p>
               </div>
+              <Button
+                type="button"
+                className="shrink-0"
+                onClick={() => {
+                  setNewCatName('');
+                  setNewCatColor(null);
+                  setShowNewCategoryModal(true);
+                }}
+                disabled={saving}
+                leftIcon={<Plus size={14} />}
+              >
+                Nova categoria
+              </Button>
             </div>
-            <div>
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <p className="text-xs font-semibold text-text-muted uppercase">Existentes</p>
-                <Button size="sm" onClick={openNewItemForm} leftIcon={<Plus size={14} />}>
-                  Novo
-                </Button>
-              </div>
-              <div className="flex max-h-[min(22rem,55vh)] flex-col gap-3 overflow-y-auto pr-1">
-                {categories.map((cat) => (
+
+            <div className="flex min-h-0 max-h-[min(24rem,58vh)] flex-col gap-3 overflow-y-auto pr-1">
+              {categories.length === 0 && !items.some((i) => !i.category_id) ? (
+                <p className="shrink-0 rounded-lg border border-dashed border-border/80 bg-surface-2/40 px-4 py-8 text-center text-sm text-text-muted">
+                  Ainda não tens categorias. Cria uma para começar a organizar itens.
+                </p>
+              ) : null}
+              {categories.map((cat) => {
+                const expanded = manageExpandedCats.has(cat.id);
+                const itemCount = items.filter((i) => i.category_id === cat.id).length;
+                return (
                   <div
                     key={cat.id}
-                    className="rounded-xl border border-border bg-surface-3 p-3 shadow-sm"
+                    className="shrink-0 overflow-hidden rounded-lg border border-border/80 bg-surface-2/30 shadow-sm"
                   >
-                    <div className="mb-2 flex min-w-0 items-start justify-between gap-2 border-b border-border/60 pb-2">
-                      {editingCategoryId === cat.id ? (
-                        <div className="flex flex-1 flex-wrap items-center gap-1 min-w-0">
-                          <Input
-                            className="min-w-0 flex-1"
-                            value={editingCategoryName}
-                            onChange={(e) => setEditingCategoryName(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && void handleSaveCategoryEdit()}
+                    <div className="flex min-w-0 items-stretch">
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left outline-none ring-0 ring-offset-0 transition-colors hover:bg-surface-3/60 focus-visible:bg-surface-3/55 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                        onClick={() => toggleManageAccordion(cat.id)}
+                        aria-expanded={expanded}
+                      >
+                        <ChevronDown
+                          size={18}
+                          strokeWidth={2}
+                          className={cn(
+                            'shrink-0 text-text-muted transition-transform duration-200 ease-out motion-reduce:duration-0',
+                            expanded ? 'rotate-0' : '-rotate-90',
+                          )}
+                        />
+                        {cat.color ? (
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-inset ring-border/50"
+                            style={{ backgroundColor: cat.color }}
+                            aria-hidden
                           />
-                          <Button
-                            size="sm"
-                            disabled={saving || !editingCategoryName.trim()}
-                            onClick={() => void handleSaveCategoryEdit()}
-                            leftIcon={<Check size={14} />}
-                          >
-                            OK
-                          </Button>
-                          <Button size="sm" variant="ghost" disabled={saving} onClick={cancelCategoryEdit}>
-                            Cancelar
-                          </Button>
-                        </div>
-                      ) : (
-                        <>
-                          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary">
-                            {cat.name}
-                          </p>
-                          <div className="flex shrink-0 items-center gap-0.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingCategoryId(cat.id);
-                                setEditingCategoryName(cat.name);
-                              }}
-                              className="p-1 rounded hover:bg-surface-4 text-text-secondary hover:text-text-primary"
-                              title="Editar categoria"
-                              aria-label={`Editar categoria ${cat.name}`}
-                            >
-                              <Pencil size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleDeleteCategory(cat)}
-                              disabled={saving}
-                              className="p-1 rounded hover:bg-surface-4 text-text-secondary hover:text-red-400 disabled:opacity-50"
-                              title="Excluir categoria"
-                              aria-label={`Excluir categoria ${cat.name}`}
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </>
-                      )}
+                        ) : (
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-border ring-1 ring-inset ring-border/40" aria-hidden />
+                        )}
+                        <span className="min-w-0 flex-1 truncate font-semibold text-text-primary">{cat.name}</span>
+                        <span className="shrink-0 text-xs tabular-nums text-text-muted">
+                          {itemCount} {itemCount === 1 ? 'item' : 'itens'}
+                        </span>
+                      </button>
+                      <div className="flex shrink-0 items-center gap-1 border-l border-border/50 bg-surface-3/40 px-2 py-1.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="shrink-0"
+                          disabled={saving}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openNewItemForm(cat.id);
+                          }}
+                          leftIcon={<Plus size={14} />}
+                        >
+                          Item
+                        </Button>
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setManageExpandedCats((prev) => new Set(prev).add(cat.id));
+                            setEditingCategoryId(cat.id);
+                            setEditingCategoryName(cat.name);
+                            setEditingCategoryColor(cat.color ?? null);
+                          }}
+                          className="rounded-md p-2 text-text-secondary transition-colors hover:bg-surface-4 hover:text-text-primary disabled:opacity-50"
+                          title="Editar categoria"
+                          aria-label={`Editar categoria ${cat.name}`}
+                        >
+                          <Pencil size={14} strokeWidth={2} />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleDeleteCategory(cat);
+                          }}
+                          className="rounded-md p-2 text-text-secondary transition-colors hover:bg-surface-4 hover:text-red-400 disabled:opacity-50"
+                          title="Excluir categoria"
+                          aria-label={`Excluir categoria ${cat.name}`}
+                        >
+                          <Trash2 size={14} strokeWidth={2} />
+                        </button>
+                      </div>
                     </div>
-                    <ManageExpenseItemList
-                      itemsList={items.filter((i) => i.category_id === cat.id)}
-                      onEditItem={beginEditItem}
-                    />
+                    <div
+                      className={cn(
+                        'grid transition-[grid-template-rows] duration-200 ease-in-out motion-reduce:transition-none',
+                        expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+                      )}
+                    >
+                      <div className="min-h-0 overflow-hidden" aria-hidden={!expanded}>
+                        <div className="mt-1 border-t border-border/50 bg-surface-1/40 px-3 pt-4 pb-4">
+                          {editingCategoryId === cat.id ? (
+                            <div className="flex flex-col gap-3 rounded-md border border-border/60 bg-surface-3/50 p-3">
+                              <div>
+                                <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-text-muted">
+                                  Nome
+                                </label>
+                                <Input
+                                  value={editingCategoryName}
+                                  onChange={(e) => setEditingCategoryName(e.target.value)}
+                                  onKeyDown={(e) => e.key === 'Enter' && void handleSaveCategoryEdit()}
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wide text-text-muted">
+                                  Cor na planilha
+                                </label>
+                                <CategoryColorPicker
+                                  value={editingCategoryColor}
+                                  onChange={setEditingCategoryColor}
+                                  disabled={saving}
+                                />
+                              </div>
+                              <div className="flex flex-wrap justify-end gap-2">
+                                <Button size="sm" variant="ghost" disabled={saving} onClick={cancelCategoryEdit}>
+                                  Cancelar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  disabled={saving || !editingCategoryName.trim()}
+                                  onClick={() => void handleSaveCategoryEdit()}
+                                  leftIcon={<Check size={14} />}
+                                >
+                                  Guardar
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <ManageExpenseItemList
+                              itemsList={items.filter((i) => i.category_id === cat.id)}
+                              onEditItem={beginEditItem}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                ))}
-                {items.some((i) => !i.category_id) && (
-                  <div className="rounded-xl border border-dashed border-border bg-surface-3/40 p-3">
-                    <p className="mb-2 text-sm font-semibold text-text-secondary">Sem categoria</p>
-                    <ManageExpenseItemList
-                      itemsList={items.filter((i) => !i.category_id)}
-                      onEditItem={beginEditItem}
-                    />
+                );
+              })}
+
+              {items.some((i) => !i.category_id) ? (
+                <div className="shrink-0 overflow-hidden rounded-lg border border-dashed border-border/70 bg-surface-2/20">
+                  <div className="flex min-w-0 items-stretch">
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left outline-none ring-0 ring-offset-0 transition-colors hover:bg-surface-3/40 focus-visible:bg-surface-3/45 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                      onClick={() => toggleManageAccordion(UNCATEGORIZED_ID)}
+                      aria-expanded={manageExpandedCats.has(UNCATEGORIZED_ID)}
+                    >
+                      <ChevronDown
+                        size={18}
+                        strokeWidth={2}
+                        className={cn(
+                          'shrink-0 text-text-muted transition-transform duration-200 ease-out motion-reduce:duration-0',
+                          manageExpandedCats.has(UNCATEGORIZED_ID) ? 'rotate-0' : '-rotate-90',
+                        )}
+                      />
+                      <span className="min-w-0 flex-1 truncate font-semibold text-text-secondary">Sem categoria</span>
+                      <span className="shrink-0 text-xs tabular-nums text-text-muted">
+                        {items.filter((i) => !i.category_id).length} itens
+                      </span>
+                    </button>
+                    <div className="flex shrink-0 items-center border-l border-border/50 bg-surface-3/30 px-2 py-1.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        disabled={saving}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openNewItemForm('');
+                        }}
+                        leftIcon={<Plus size={14} />}
+                      >
+                        Item
+                      </Button>
+                    </div>
                   </div>
-                )}
-              </div>
+                  <div
+                    className={cn(
+                      'grid transition-[grid-template-rows] duration-200 ease-in-out motion-reduce:transition-none',
+                      manageExpandedCats.has(UNCATEGORIZED_ID) ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+                    )}
+                  >
+                    <div
+                      className="min-h-0 overflow-hidden"
+                      aria-hidden={!manageExpandedCats.has(UNCATEGORIZED_ID)}
+                    >
+                      <div className="mt-1 border-t border-border/50 bg-surface-1/30 px-3 pt-4 pb-4">
+                        <ManageExpenseItemList
+                          itemsList={items.filter((i) => !i.category_id)}
+                          onEditItem={beginEditItem}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -920,6 +1190,60 @@ export function ExpensesSheet() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={showNewCategoryModal}
+        onClose={() => {
+          if (saving) return;
+          setShowNewCategoryModal(false);
+          setNewCatName('');
+          setNewCatColor(null);
+        }}
+        title="Nova categoria"
+      >
+        <div className="flex flex-col gap-4">
+          <div>
+            <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-text-muted">
+              Nome
+            </label>
+            <Input
+              placeholder="Ex.: Cartões, Casa…"
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void handleAddCategory()}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wide text-text-muted">
+              Cor na planilha (opcional)
+            </label>
+            <CategoryColorPicker value={newCatColor} onChange={setNewCatColor} disabled={saving} />
+          </div>
+          <div className="flex flex-wrap justify-end gap-2 border-t border-border/60 pt-2">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={saving}
+              onClick={() => {
+                setShowNewCategoryModal(false);
+                setNewCatName('');
+                setNewCatColor(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={saving || !newCatName.trim()}
+              onClick={() => void handleAddCategory()}
+              leftIcon={<Plus size={14} />}
+            >
+              Criar categoria
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
