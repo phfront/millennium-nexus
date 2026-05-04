@@ -15,6 +15,8 @@
  * 3) Nutrição — lembretes por `diet_plan_meals.target_time` (relógio local via `profiles.timezone`),
  *    antecedência em `diet_settings.meal_reminder_lead_minutes`, opt-in `meal_reminder_push_enabled`;
  *    além dos fixos 16h (água) e 21h (checklist vazio).
+ *    Dedupe em `diet_push_reminder_sent` (o catch-up de 5 min re-dispararia
+ *    o mesmo lembrete em cada tick enquanto o minuto cair na janela).
  *
  * Secrets necessários (Supabase Dashboard → Settings → Edge Functions):
  *   VAPID_PUBLIC_KEY   – chave pública VAPID
@@ -162,6 +164,35 @@ function groupSubscriptionsByUser(subs: PushSubscription[]): Map<string, PushSub
     m.set(s.user_id, arr);
   }
   return m;
+}
+
+/** Um endpoint = um envio; várias linhas em push_subscriptions duplicavam o mesmo push. */
+function dedupeSubscriptionsByEndpoint(subs: PushSubscription[]): PushSubscription[] {
+  const byEndpoint = new Map<string, PushSubscription>();
+  for (const s of subs) {
+    if (!byEndpoint.has(s.endpoint)) byEndpoint.set(s.endpoint, s);
+  }
+  return [...byEndpoint.values()];
+}
+
+/** Reserva envio único por utilizador / chave / dia civil local; retorna false se já enviado. */
+async function claimDietPushDedupe(
+  supabase: SupabaseServiceClient,
+  userId: string,
+  dedupeKey: string,
+  localDateYmd: string,
+): Promise<boolean> {
+  const { error } = await supabase.from('diet_push_reminder_sent').insert({
+    user_id: userId,
+    dedupe_key: dedupeKey,
+    local_date: localDateYmd,
+  });
+  if (error) {
+    if ((error as { code?: string }).code === '23505') return false;
+    console.error('diet_push_reminder_sent insert:', error);
+    return false;
+  }
+  return true;
 }
 
 /** Data civil YYYY-MM-DD no fuso IANA do utilizador. */
@@ -1050,7 +1081,7 @@ async function sendNutritionReminders(
   for (const uid of userIds) {
     const tz = tzByUser.get(uid) ?? defaultTz;
     const today = todayStr(tz);
-    const userSubs = subscriptions.filter((s) => s.user_id === uid);
+    const userSubs = dedupeSubscriptionsByEndpoint(subscriptions.filter((s) => s.user_id === uid));
     if (userSubs.length === 0) continue;
 
     const settings = settingsMap.get(uid);
@@ -1072,27 +1103,30 @@ async function sendNutritionReminders(
         );
 
         if (totalWater < waterTarget * 0.5) {
-          const pct = Math.round((totalWater / waterTarget) * 100);
-          for (const sub of userSubs) {
-            try {
-              await webPush.sendNotification(
-                { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-                JSON.stringify({
-                  title: '💧 Hidratação baixa',
-                  body: `Você consumiu apenas ${pct}% da meta de água. Beba mais!`,
-                  url: '/health/nutrition',
-                  tag: `water-${uid.slice(0, 8)}-${today}`,
-                  icon: '/icons/icon-192.png',
-                }),
-              );
-              sent++;
-            } catch (err: unknown) {
-              const status = (err as { statusCode?: number }).statusCode;
-              if (status === 404 || status === 410) {
-                await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
-                expired++;
-              } else {
-                console.error('Erro push nutrition water:', err);
+          const canSendWater = await claimDietPushDedupe(supabase, uid, 'water', today);
+          if (canSendWater) {
+            const pct = Math.round((totalWater / waterTarget) * 100);
+            for (const sub of userSubs) {
+              try {
+                await webPush.sendNotification(
+                  { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+                  JSON.stringify({
+                    title: '💧 Hidratação baixa',
+                    body: `Você consumiu apenas ${pct}% da meta de água. Beba mais!`,
+                    url: '/health/nutrition',
+                    tag: `water-${uid.slice(0, 8)}-${today}`,
+                    icon: '/icons/icon-192.png',
+                  }),
+                );
+                sent++;
+              } catch (err: unknown) {
+                const status = (err as { statusCode?: number }).statusCode;
+                if (status === 404 || status === 410) {
+                  await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+                  expired++;
+                } else {
+                  console.error('Erro push nutrition water:', err);
+                }
               }
             }
           }
@@ -1113,6 +1147,9 @@ async function sendNutritionReminders(
 
           const loggedNames = await getLoggedMealNamesForDay(uid, today);
           if (loggedNames.has(meal.name)) continue;
+
+          const canSendMeal = await claimDietPushDedupe(supabase, uid, `meal:${meal.id}`, today);
+          if (!canSendMeal) continue;
 
           const hm = meal.target_time.slice(0, 5);
           const body =
@@ -1157,26 +1194,29 @@ async function sendNutritionReminders(
         .limit(1);
 
       if (!logRows || logRows.length === 0) {
-        for (const sub of userSubs) {
-          try {
-            await webPush.sendNotification(
-              { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-              JSON.stringify({
-                title: '🍽️ Marque suas refeições',
-                body: 'Você ainda não registrou nenhuma refeição hoje. Marque o que comeu!',
-                url: '/health/nutrition',
-                tag: `meal-${uid.slice(0, 8)}-${today}`,
-                icon: '/icons/icon-192.png',
-              }),
-            );
-            sent++;
-          } catch (err: unknown) {
-            const status = (err as { statusCode?: number }).statusCode;
-            if (status === 404 || status === 410) {
-              await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
-              expired++;
-            } else {
-              console.error('Erro push nutrition meals:', err);
+        const canSendEvening = await claimDietPushDedupe(supabase, uid, 'checklist-empty', today);
+        if (canSendEvening) {
+          for (const sub of userSubs) {
+            try {
+              await webPush.sendNotification(
+                { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+                JSON.stringify({
+                  title: '🍽️ Marque suas refeições',
+                  body: 'Você ainda não registrou nenhuma refeição hoje. Marque o que comeu!',
+                  url: '/health/nutrition',
+                  tag: `meal-${uid.slice(0, 8)}-${today}`,
+                  icon: '/icons/icon-192.png',
+                }),
+              );
+              sent++;
+            } catch (err: unknown) {
+              const status = (err as { statusCode?: number }).statusCode;
+              if (status === 404 || status === 410) {
+                await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+                expired++;
+              } else {
+                console.error('Erro push nutrition meals:', err);
+              }
             }
           }
         }
