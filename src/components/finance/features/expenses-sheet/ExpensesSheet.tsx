@@ -69,9 +69,11 @@ const MONTH_INPUT_CLASS =
 function ManageExpenseItemRow({
   item,
   onEdit,
+  onAskRemove,
 }: {
   item: ExpenseItem;
   onEdit: (item: ExpenseItem) => void;
+  onAskRemove: (item: ExpenseItem) => void;
 }) {
   return (
     <li
@@ -100,6 +102,15 @@ function ManageExpenseItemRow({
         >
           <Pencil size={14} strokeWidth={2} />
         </button>
+        <button
+          type="button"
+          onClick={() => onAskRemove(item)}
+          className="rounded-md p-1.5 text-text-secondary transition-colors hover:bg-surface-3 hover:text-red-400"
+          title="Remover item"
+          aria-label={`Remover ${item.name}`}
+        >
+          <Trash2 size={14} strokeWidth={2} />
+        </button>
       </div>
     </li>
   );
@@ -108,9 +119,11 @@ function ManageExpenseItemRow({
 function ManageExpenseItemList({
   itemsList,
   onEditItem,
+  onAskRemoveItem,
 }: {
   itemsList: ExpenseItem[];
   onEditItem: (item: ExpenseItem) => void;
+  onAskRemoveItem: (item: ExpenseItem) => void;
 }) {
   if (itemsList.length === 0) {
     return <p className="px-1 py-2 text-xs text-text-muted">Nenhum item nesta categoria.</p>;
@@ -121,7 +134,12 @@ function ManageExpenseItemList({
       aria-label="Itens da categoria"
     >
       {itemsList.map((item) => (
-        <ManageExpenseItemRow key={item.id} item={item} onEdit={onEditItem} />
+        <ManageExpenseItemRow
+          key={item.id}
+          item={item}
+          onEdit={onEditItem}
+          onAskRemove={onAskRemoveItem}
+        />
       ))}
     </ul>
   );
@@ -143,6 +161,7 @@ export function ExpensesSheet() {
     deleteCategory,
     addItem,
     updateItem,
+    deleteItem,
     getEntry,
     getMonthlyTotal,
     getCategoryTotal,
@@ -194,6 +213,8 @@ export function ExpensesSheet() {
   }>({ session: -1, dataKey: '', lastCanonical: new Set() });
   const [paidNoteTarget, setPaidNoteTarget] = useState<{ itemId: string; month: string } | null>(null);
   const [paidNoteBusy, setPaidNoteBusy] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<ExpenseItem | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
 
   const allMonths = buildSpreadsheetMonthList(
     entries.map((e) => e.month),
@@ -468,6 +489,39 @@ export function ExpensesSheet() {
       toast.error('Erro ao excluir categoria');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleHideItem(item: ExpenseItem) {
+    setRemoveBusy(true);
+    try {
+      await updateItem(item.id, { is_active: false });
+      toast.success('Item ocultado');
+      await refetch();
+      setRemoveTarget(null);
+    } catch {
+      toast.error('Erro ao ocultar item');
+    } finally {
+      setRemoveBusy(false);
+    }
+  }
+
+  async function handleDeleteItem(item: ExpenseItem) {
+    setRemoveBusy(true);
+    try {
+      await deleteItem(item.id);
+      if (editingItemId === item.id) {
+        setEditingItemId(null);
+        setManageStep('list');
+        resetItemForm();
+      }
+      toast.success('Item excluído');
+      await refetch();
+      setRemoveTarget(null);
+    } catch {
+      toast.error('Erro ao excluir item');
+    } finally {
+      setRemoveBusy(false);
     }
   }
 
@@ -996,6 +1050,7 @@ export function ExpensesSheet() {
                             <ManageExpenseItemList
                               itemsList={items.filter((i) => i.category_id === cat.id)}
                               onEditItem={beginEditItem}
+                              onAskRemoveItem={(item) => setRemoveTarget(item)}
                             />
                           )}
                         </div>
@@ -1057,6 +1112,7 @@ export function ExpensesSheet() {
                         <ManageExpenseItemList
                           itemsList={items.filter((i) => !i.category_id)}
                           onEditItem={beginEditItem}
+                          onAskRemoveItem={(item) => setRemoveTarget(item)}
                         />
                       </div>
                     </div>
@@ -1241,6 +1297,64 @@ export function ExpensesSheet() {
               leftIcon={<Plus size={14} />}
             >
               Criar categoria
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={removeTarget !== null}
+        onClose={() => {
+          if (removeBusy) return;
+          setRemoveTarget(null);
+        }}
+        title="Remover item"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-text-secondary">
+            O que queres fazer com{' '}
+            <span className="font-semibold text-text-primary">
+              &quot;{removeTarget?.name ?? ''}&quot;
+            </span>
+            ?
+          </p>
+          <ul className="flex flex-col gap-2 text-xs text-text-muted">
+            <li>
+              <span className="font-medium text-text-secondary">Ocultar item</span> — desaparece da
+              planilha mas mantém todos os lançamentos. Reversível em &quot;Editar item → Mostrar
+              na planilha&quot;.
+            </li>
+            <li>
+              <span className="font-medium text-text-secondary">Excluir definitivamente</span> —
+              remove o item e os lançamentos atuais e futuros. Meses já arquivados continuam
+              intactos no histórico.
+            </li>
+          </ul>
+          <div className="flex flex-wrap justify-end gap-2 border-t border-border/60 pt-3">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={removeBusy}
+              onClick={() => setRemoveTarget(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={removeBusy || !removeTarget}
+              onClick={() => removeTarget && void handleHideItem(removeTarget)}
+            >
+              Ocultar item
+            </Button>
+            <Button
+              type="button"
+              disabled={removeBusy || !removeTarget}
+              onClick={() => removeTarget && void handleDeleteItem(removeTarget)}
+              leftIcon={<Trash2 size={14} />}
+              className="bg-red-500/90 text-white hover:bg-red-500"
+            >
+              Excluir definitivamente
             </Button>
           </div>
         </div>

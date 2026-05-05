@@ -409,6 +409,19 @@ export function useExpenses() {
     }
   }
 
+  async function deleteItem(id: string) {
+    if (!user) return;
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('finance_expense_items')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id);
+    if (error) throw new Error(error.message);
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    setEntries((prev) => prev.filter((e) => e.item_id !== id));
+  }
+
   function getEntry(itemId: string, month: string): ExpenseEntry | undefined {
     return entries.find(
       (e) => e.item_id === itemId && normalizeMonthKey(e.month) === normalizeMonthKey(month),
@@ -458,6 +471,7 @@ export function useExpenses() {
     deleteCategory,
     addItem,
     updateItem,
+    deleteItem,
     getEntry,
     getMonthlyTotal,
     getCategoryTotal,
