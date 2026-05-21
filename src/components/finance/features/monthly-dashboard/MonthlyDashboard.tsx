@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   TrendingUp,
@@ -51,6 +51,7 @@ export function MonthlyDashboard() {
   const [loadingConcluded, setLoadingConcluded] = useState(false);
   const [concluding, setConcluding] = useState(false);
   const [reopening, setReopening] = useState(false);
+  const initialMonthResolvedRef = useRef(false);
 
   const { maxPlanningMonth } = useFinanceSpreadsheetSettings();
   const {
@@ -63,6 +64,37 @@ export function MonthlyDashboard() {
   useEffect(() => {
     if (month > maxPlanningMonth) setMonth(maxPlanningMonth);
   }, [month, maxPlanningMonth]);
+
+  /** Se o mês corrente do calendário já está concluído, abrir o dashboard no mês seguinte. */
+  useEffect(() => {
+    if (!user?.id || initialMonthResolvedRef.current) return;
+
+    const calendarMonth = toMonthDate(new Date());
+    let cancelled = false;
+
+    void (async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from('finance_month_snapshots')
+        .select('month')
+        .eq('user_id', user.id)
+        .eq('month', calendarMonth)
+        .maybeSingle();
+
+      if (cancelled) return;
+      initialMonthResolvedRef.current = true;
+
+      if (data) {
+        let next = getNextMonth(calendarMonth);
+        if (next > maxPlanningMonth) next = maxPlanningMonth;
+        setMonth(next);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, maxPlanningMonth]);
   const {
     entries,
     isLoading: loadingExpenses,
@@ -144,6 +176,8 @@ export function MonthlyDashboard() {
       }
       setCompleteModalOpen(false);
       setCurrentMonthConcluded(true);
+      const next = getNextMonth(month);
+      if (next <= maxPlanningMonth) setMonth(next);
       toast.success('Mês concluído. Totais e lançamentos foram arquivados.');
     } finally {
       setConcluding(false);
