@@ -3,16 +3,14 @@
  *
  * Disparada via cron a cada 5 minutos (no Dashboard Supabase ou pg_cron: passo
  * de 5 no campo minuto do padrão cron). Tipos fixed_time / reminder e horários
- * fixos (finanças, nutrição)
+ * fixos (nutrição)
  * usam janela de catch-up de 5 min para não perder o minuto exacto entre ticks.
- * Notificações `interval` avaliam só o minuto actual (evita dois disparos numa
- * mesma invocação quando vários múltiplos cabem na janela).
- * I/O: uma leitura de `push_subscriptions` no início; finance/nutrição só
- * consideram utilizadores com push; learning usa RPC `fn_next_incomplete_learning_plan_days`.
+ * O dedupe usa o minuto local programado para evitar reenvios nas janelas
+ * sobrepostas do catch-up.
+ * I/O: uma leitura de `push_subscriptions` no início; Daily Goals e nutrição só
+ * consideram utilizadores com push.
  * 1) Daily Goals: regras em `tracker_notifications` (horário local do utilizador).
- * 2) Nexus Finance: despesas com vencimento — `finance_user_settings` define
- *    quantos dias antes avisar e a hora do push; dedupe em `finance_expense_reminder_sent`.
- * 3) Nutrição — lembretes por `diet_plan_meals.target_time` (relógio local via `profiles.timezone`),
+ * 2) Nutrição — lembretes por `diet_plan_meals.target_time` (relógio local via `profiles.timezone`),
  *    antecedência em `diet_settings.meal_reminder_lead_minutes`, opt-in `meal_reminder_push_enabled`;
  *    além dos fixos 16h (água) e 21h (checklist vazio).
  *    Dedupe em `diet_push_reminder_sent` (o catch-up de 5 min re-dispararia
@@ -99,6 +97,13 @@ function mealReminderMinuteOfDay(targetTimeStr: string, leadMinutes: number): nu
   let reminderMin = targetMin - leadMinutes;
   if (reminderMin < 0) reminderMin += 24 * 60;
   return reminderMin;
+}
+
+function minutesToTime(totalMinutes: number): string {
+  const normalized = ((totalMinutes % 1440) + 1440) % 1440;
+  const hour = Math.floor(normalized / 60);
+  const minute = normalized % 60;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
 }
 
 /** Igual ao intervalo do cron que invoca esta função (catch-up para horários fixos). */
@@ -195,6 +200,27 @@ async function claimDietPushDedupe(
   return true;
 }
 
+async function claimPushDedupe(
+  supabase: SupabaseServiceClient,
+  userId: string,
+  module: string,
+  dedupeKey: string,
+  localDateYmd: string,
+): Promise<boolean> {
+  const { error } = await supabase.from('push_reminder_sent').insert({
+    user_id: userId,
+    module,
+    dedupe_key: dedupeKey,
+    local_date: localDateYmd,
+  });
+  if (error) {
+    if ((error as { code?: string }).code === '23505') return false;
+    console.error('push_reminder_sent insert:', error);
+    return false;
+  }
+  return true;
+}
+
 /** Data civil YYYY-MM-DD no fuso IANA do utilizador. */
 function getZonedDateYmd(now: Date, timeZone: string): string {
   const tz = timeZone?.trim() || 'UTC';
@@ -280,45 +306,74 @@ async function filterHabitsGoalsAlreadyComplete(
   tzByUser: Map<string, string>,
   now: Date,
 ): Promise<TrackerNotification[]> {
-  const out: TrackerNotification[] = [];
-  const cache = new Map<string, boolean>();
+  if (notifs.length === 0) return [];
 
+  const trackerById = new Map(notifs.map((n) => [n.tracker_id, n]));
+  const todayByTracker = new Map<string, string>();
   for (const n of notifs) {
-    const uid = n.trackers.user_id;
-    const tz = tzByUser.get(uid) ?? 'America/Sao_Paulo';
-    const todayYmd = getZonedDateYmd(now, tz);
-    const cacheKey = `${n.tracker_id}:${todayYmd}`;
-    let complete: boolean;
-    if (cache.has(cacheKey)) {
-      complete = cache.get(cacheKey)!;
-    } else {
-      const { data: periodRow, error: rpcErr } = await supabase.rpc('tracker_period_start', {
-        p_tracker: n.tracker_id,
-        p_date: todayYmd,
-      });
-      if (rpcErr) {
-        console.error('tracker_period_start', rpcErr);
-        complete = false;
-      } else {
-        const periodStart = String(periodRow);
-        const { data: logRows, error: logErr } = await supabase
-          .from('logs')
-          .select('created_at, value, checked_items')
-          .eq('tracker_id', n.tracker_id)
-          .gte('created_at', periodStart)
-          .lte('created_at', todayYmd);
-        if (logErr) {
-          console.error('logs fetch (habits push)', logErr);
-          complete = false;
-        } else {
-          complete = habitsGoalMetInPeriod(n.trackers, periodStart, todayYmd, logRows ?? []);
-        }
-      }
-      cache.set(cacheKey, complete);
-    }
-    if (!complete) out.push(n);
+    const tz = tzByUser.get(n.trackers.user_id) ?? 'America/Sao_Paulo';
+    todayByTracker.set(n.tracker_id, getZonedDateYmd(now, tz));
   }
-  return out;
+
+  const periodItems = [...trackerById.keys()].map((trackerId) => ({
+    tracker_id: trackerId,
+    local_date: todayByTracker.get(trackerId),
+  }));
+  const { data: periodRows, error: rpcErr } = await supabase.rpc('tracker_period_starts', {
+    p_items: periodItems,
+  });
+
+  if (rpcErr) {
+    console.error('tracker_period_starts', rpcErr);
+    return notifs;
+  }
+
+  const periodByTracker = new Map<string, string>();
+  for (const row of periodRows ?? []) {
+    periodByTracker.set(String(row.tracker_id), String(row.period_start));
+  }
+  if (periodByTracker.size === 0) return notifs;
+
+  const periodStarts = [...periodByTracker.values()];
+  const todayValues = [...todayByTracker.values()];
+  const { data: logRows, error: logErr } = await supabase
+    .from('logs')
+    .select('tracker_id, created_at, value, checked_items')
+    .in('tracker_id', [...periodByTracker.keys()])
+    .gte('created_at', periodStarts.sort()[0])
+    .lte('created_at', todayValues.sort().at(-1)!);
+
+  if (logErr) {
+    console.error('logs fetch (habits push)', logErr);
+    return notifs;
+  }
+
+  const logsByTracker = new Map<
+    string,
+    { created_at: string; value: number | null; checked_items: boolean[] | null }[]
+  >();
+  for (const row of logRows ?? []) {
+    const trackerId = String(row.tracker_id);
+    const rows = logsByTracker.get(trackerId) ?? [];
+    rows.push({
+      created_at: String(row.created_at),
+      value: row.value as number | null,
+      checked_items: row.checked_items as boolean[] | null,
+    });
+    logsByTracker.set(trackerId, rows);
+  }
+
+  return notifs.filter((n) => {
+    const periodStart = periodByTracker.get(n.tracker_id);
+    const todayYmd = todayByTracker.get(n.tracker_id);
+    if (!periodStart || !todayYmd) return true;
+    return !habitsGoalMetInPeriod(
+      n.trackers,
+      periodStart,
+      todayYmd,
+      logsByTracker.get(n.tracker_id) ?? [],
+    );
+  });
 }
 
 function shouldFire(
@@ -341,7 +396,7 @@ function shouldFire(
 
   if (notif.type === 'reminder' && notif.target_time && notif.lead_time != null) {
     const targetMin = toMinutes(notif.target_time.slice(0, 5));
-    const reminderMin = targetMin - notif.lead_time;
+    const reminderMin = ((targetMin - notif.lead_time) % 1440 + 1440) % 1440;
     return currentMin === reminderMin;
   }
 
@@ -351,20 +406,29 @@ function shouldFire(
 /**
  * Com cron espaçado (ex. 5 min), `fixed_time` / `reminder` podem calhar entre ticks;
  * percorre os últimos PUSH_CRON_INTERVAL_MINUTES+1 minutos locais.
- * `interval` só no minuto actual — evita dois múltiplos na mesma janela.
+ * O dedupe por minuto programado evita reenvio entre janelas sobrepostas.
  */
 function shouldFireWithCronCatchup(
   notif: TrackerNotification,
   now: Date,
   timeZone: string,
 ): boolean {
-  if (notif.type === 'interval' && notif.frequency_minutes) {
-    return shouldFire(notif, getZonedClock(now, timeZone));
-  }
   for (let lag = 0; lag <= PUSH_CRON_INTERVAL_MINUTES; lag++) {
     if (shouldFire(notif, getZonedClockAtLag(now, timeZone, lag))) return true;
   }
   return false;
+}
+
+function dedupeMinuteForCronCatchup(
+  notif: TrackerNotification,
+  now: Date,
+  timeZone: string,
+): number | null {
+  for (let lag = 0; lag <= PUSH_CRON_INTERVAL_MINUTES; lag++) {
+    const clock = getZonedClockAtLag(now, timeZone, lag);
+    if (shouldFire(notif, clock)) return clock.totalMinutes;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -787,7 +851,9 @@ Deno.serve(async () => {
     return new Response(JSON.stringify({ error: subErr.message }), { status: 500 });
   }
 
-  const allSubscriptions = (allSubRows ?? []) as PushSubscription[];
+  const allSubscriptions = dedupeSubscriptionsByEndpoint(
+    (allSubRows ?? []) as PushSubscription[],
+  );
   const subscriptionsByUser = groupSubscriptionsByUser(allSubscriptions);
 
   if (allSubscriptions.length === 0) {
@@ -796,8 +862,6 @@ Deno.serve(async () => {
         sent: 0,
         expired: 0,
         checked: 0,
-        learning_checked: 0,
-        finance_candidates: 0,
         nutrition_checked: 0,
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -805,6 +869,23 @@ Deno.serve(async () => {
   }
 
   const pushUserIds = [...subscriptionsByUser.keys()];
+  const defaultTz = 'America/Sao_Paulo';
+  const tzByUser = new Map<string, string>();
+
+  const { data: profileRows, error: profileError } = await supabase
+    .from('profiles')
+    .select('id, timezone')
+    .in('id', pushUserIds);
+
+  if (profileError) {
+    console.error('Erro ao buscar perfis (timezone):', profileError);
+    return new Response(JSON.stringify({ error: profileError.message }), { status: 500 });
+  }
+  for (const row of profileRows ?? []) {
+    const id = row.id as string;
+    const tz = (row.timezone as string | null)?.trim();
+    tzByUser.set(id, tz || defaultTz);
+  }
 
   // Busca todas as notificações habilitadas de trackers ativos
   const { data: notifications, error: notifError } = await supabase
@@ -820,7 +901,8 @@ Deno.serve(async () => {
       )
     `)
     .eq('enabled', true)
-    .eq('trackers.active', true);
+    .eq('trackers.active', true)
+    .in('trackers.user_id', pushUserIds);
 
   if (notifError) {
     console.error('Erro ao buscar notificações:', notifError);
@@ -828,28 +910,6 @@ Deno.serve(async () => {
   }
 
   const notifList = (notifications ?? []) as unknown as TrackerNotification[];
-  const ownerIds = [...new Set(notifList.map((n) => n.trackers.user_id))];
-
-  /** Alinhado ao default da migration `006_user_timezone.sql`. */
-  const defaultTz = 'America/Sao_Paulo';
-  const tzByUser = new Map<string, string>();
-
-  if (ownerIds.length > 0) {
-    const { data: profileRows, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, timezone')
-      .in('id', ownerIds);
-
-    if (profileError) {
-      console.error('Erro ao buscar perfis (timezone):', profileError);
-      return new Response(JSON.stringify({ error: profileError.message }), { status: 500 });
-    }
-    for (const row of profileRows ?? []) {
-      const id = row.id as string;
-      const tz = (row.timezone as string | null)?.trim();
-      tzByUser.set(id, tz || defaultTz);
-    }
-  }
 
   // Filtra: horário + dia da semana (recurrence_days) + meta ainda não cumprida no período corrente
   const firingRaw = notifList.filter((n) => {
@@ -868,14 +928,23 @@ Deno.serve(async () => {
   let expired = 0;
 
   if (firing.length > 0) {
-    const dgUserIds = new Set(firing.map((n) => n.trackers.user_id));
-    const subscriptions = [...dgUserIds].flatMap(
-      (uid) => subscriptionsByUser.get(uid) ?? [],
-    ) as PushSubscription[];
-
     for (const notif of firing) {
       const userId  = notif.trackers.user_id;
-      const userSubs = subscriptions.filter((s) => s.user_id === userId);
+      const tz = tzByUser.get(userId) ?? defaultTz;
+      const dedupeMinute = dedupeMinuteForCronCatchup(notif, now, tz);
+      if (dedupeMinute == null) continue;
+
+      const localDate = getZonedDateYmd(now, tz);
+      const canSend = await claimPushDedupe(
+        supabase,
+        userId,
+        'daily-goals',
+        `${notif.id}:${dedupeMinute}`,
+        localDate,
+      );
+      if (!canSend) continue;
+
+      const userSubs = subscriptionsByUser.get(userId) ?? [];
 
       for (const sub of userSubs) {
         try {
@@ -903,39 +972,27 @@ Deno.serve(async () => {
     }
   }
 
-  const learning = await sendLearningPlanReminders(supabase, now, subscriptionsByUser);
-  sent += learning.sent;
-  expired += learning.expired;
-
-  const finance = await sendFinanceExpenseReminders(
-    supabase,
-    now,
-    pushUserIds,
-    subscriptionsByUser,
-  );
-  sent += finance.sent;
-  expired += finance.expired;
-
   const nutrition = await sendNutritionReminders(
     supabase,
     now,
     pushUserIds,
     subscriptionsByUser,
+    tzByUser,
   );
   sent += nutrition.sent;
   expired += nutrition.expired;
 
-  console.log(
-    `[send-push] ${now.toISOString()} — sent: ${sent}, expired removed: ${expired}, dg: ${firing.length}, learning: ${learning.checked}, finance: ${finance.candidates}, nutrition: ${nutrition.checked}`,
-  );
+  if (sent > 0 || expired > 0) {
+    console.log(
+      `[send-push] ${now.toISOString()} — sent: ${sent}, expired removed: ${expired}, dg: ${firing.length}, nutrition: ${nutrition.checked}`,
+    );
+  }
 
   return new Response(
     JSON.stringify({
       sent,
       expired,
       checked: firing.length,
-      learning_checked: learning.checked,
-      finance_candidates: finance.candidates,
       nutrition_checked: nutrition.checked,
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -950,6 +1007,7 @@ async function sendNutritionReminders(
   now: Date,
   pushUserIds: string[],
   subscriptionsByUser: Map<string, PushSubscription[]>,
+  tzByUser: Map<string, string>,
 ): Promise<{ sent: number; expired: number; checked: number }> {
   if (pushUserIds.length === 0) return { sent: 0, expired: 0, checked: 0 };
 
@@ -978,36 +1036,32 @@ async function sendNutritionReminders(
     settingsRows.map((r: DietSettingsRow) => [r.user_id, r]),
   );
 
-  // Busca timezones
   const defaultTz = 'America/Sao_Paulo';
-  const { data: profileRows } = await supabase
-    .from('profiles')
-    .select('id, timezone')
-    .in('id', userIds);
-
-  const tzByUser = new Map<string, string>();
-  for (const row of profileRows ?? []) {
-    const id = row.id as string;
-    const tz = (row.timezone as string | null)?.trim();
-    tzByUser.set(id, tz || defaultTz);
-  }
-
-  const subscriptions = userIds.flatMap(
-    (uid) => subscriptionsByUser.get(uid) ?? [],
-  ) as PushSubscription[];
-  if (subscriptions.length === 0) return { sent: 0, expired: 0, checked: settingsRows.length };
-
-  const usersWithSub = new Set(subscriptions.map((s) => s.user_id));
 
   /** user_id -> refeições do plano ativo com target_time e lembrete por refeição ativo */
   const mealsByUser = new Map<string, { id: string; name: string; target_time: string }[]>();
   const mealReminderEligible = settingsRows.filter((r: DietSettingsRow) => {
-    const on = r.meal_reminder_push_enabled === true;
-    return on && usersWithSub.has(r.user_id);
+    return r.meal_reminder_push_enabled === true;
   }) as DietSettingsRow[];
+  const mealTargetTimesByUser = new Map<string, Set<string>>();
+
+  for (const row of mealReminderEligible) {
+    const tz = tzByUser.get(row.user_id) ?? defaultTz;
+    const lead = Math.round(Number(row.meal_reminder_lead_minutes ?? 15));
+    const leadClamped = Math.min(120, Math.max(5, lead));
+    const targetTimes = new Set<string>();
+    for (let lag = 0; lag <= PUSH_CRON_INTERVAL_MINUTES; lag++) {
+      const clock = getZonedClockAtLag(now, tz, lag);
+      targetTimes.add(minutesToTime(clock.totalMinutes + leadClamped));
+    }
+    mealTargetTimesByUser.set(row.user_id, targetTimes);
+  }
 
   if (mealReminderEligible.length > 0) {
     const eligibleIds = mealReminderEligible.map((r) => r.user_id);
+    const possibleTargetTimes = [
+      ...new Set([...mealTargetTimesByUser.values()].flatMap((times) => [...times])),
+    ];
     const { data: activePlans, error: planErr } = await supabase
       .from('diet_plans')
       .select('id, user_id')
@@ -1026,6 +1080,7 @@ async function sendNutritionReminders(
           .from('diet_plan_meals')
           .select('id, name, target_time, plan_id')
           .in('plan_id', planIds)
+          .in('target_time', possibleTargetTimes)
           .eq('meal_reminder_enabled', true)
           .not('target_time', 'is', null);
 
@@ -1037,6 +1092,7 @@ async function sendNutritionReminders(
             if (!uid) continue;
             const tt = row.target_time as string;
             if (!tt) continue;
+            if (!mealTargetTimesByUser.get(uid)?.has(`${tt.slice(0, 5)}:00`)) continue;
             const list = mealsByUser.get(uid) ?? [];
             list.push({
               id: row.id as string,
@@ -1081,7 +1137,7 @@ async function sendNutritionReminders(
   for (const uid of userIds) {
     const tz = tzByUser.get(uid) ?? defaultTz;
     const today = todayStr(tz);
-    const userSubs = dedupeSubscriptionsByEndpoint(subscriptions.filter((s) => s.user_id === uid));
+    const userSubs = subscriptionsByUser.get(uid) ?? [];
     if (userSubs.length === 0) continue;
 
     const settings = settingsMap.get(uid);
@@ -1226,4 +1282,3 @@ async function sendNutritionReminders(
 
   return { sent, expired, checked: settingsRows.length };
 }
-
