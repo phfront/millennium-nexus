@@ -19,6 +19,8 @@ interface AppSidebarProps {
   modules: Module[];
 }
 
+const REMOVED_MODULE_SLUGS = new Set(["households", "lists", "learning"]);
+
 export function AppSidebar({ modules }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -52,7 +54,7 @@ export function AppSidebar({ modules }: AppSidebarProps) {
   }
 
   const activeModules = modules
-    .filter((m) => m.is_active)
+    .filter((m) => m.is_active && !REMOVED_MODULE_SLUGS.has(m.slug))
     .sort((a, b) => a.sort_order - b.sort_order);
 
   const links = [

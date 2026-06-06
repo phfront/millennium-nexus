@@ -505,7 +505,7 @@ export default function ProfilePage() {
         </Card.Header>
         <Card.Body className="space-y-5">
           <p className="text-xs text-text-muted">
-            Configure seu provedor de IA para utilizar funcionalidades como geração automática de planos de estudo. Sua chave fica salva apenas na sua conta.
+            Configure seu provedor de IA para funcionalidades inteligentes do portal. Sua chave fica salva apenas na sua conta.
           </p>
 
           <Select

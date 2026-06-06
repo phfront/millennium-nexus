@@ -6,7 +6,6 @@ import { AppSidebar } from '@/components/shell/AppSidebar';
 import { AppHeader } from '@/components/shell/AppHeader';
 import { MobileSidebarProvider } from '@/components/shell/MobileSidebarContext';
 import { fetchDeniedModuleIdsForUser, fetchActiveModuleIdsForUser, filterModulesForNav } from '@/lib/modules/access';
-import { PendingInvitesBanner } from '@/components/households/PendingInvitesBanner';
 import type { Module } from '@/types/database';
 
 export default async function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -40,7 +39,6 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
 
           <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
             <AppHeader />
-            <PendingInvitesBanner />
 
             <main className="pwa-main-safe-top pwa-scroll-main min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-4 md:pb-6">
               {children}

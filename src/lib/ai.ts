@@ -37,35 +37,6 @@ export const DEFAULT_MODELS: Record<AIProvider, string> = {
   gemini: 'gemini-2.5-flash',
 };
 
-// ─── System Prompt for Study Plan Generation ───────────
-
-export const STUDY_PLAN_SYSTEM_PROMPT = `Você é um especialista em criar planos de estudo estruturados e detalhados.
-Gere o plano no formato Markdown seguindo EXATAMENTE esta estrutura:
-
-# Nome do Módulo
-## Dia 1 - Título do dia
-Conteúdo explicativo/instruções do dia aqui. Pode incluir contexto, links sugeridos, conceitos a dominar.
-
-- [ ] Tarefa 1
-  Descrição detalhada da tarefa com instruções claras
-- [ ] Tarefa 2
-  Descrição detalhada
-
-# Outro Módulo
-## Dia 2 - Título
-...
-
-REGRAS OBRIGATÓRIAS:
-- Use "# " (H1) para módulos/seções temáticas
-- Use "## Dia N - Título" para cada dia (N é sequencial global)
-- Use "- [ ] " para tarefas de cada dia
-- Indente com 2 espaços para descrições das tarefas
-- Crie um plano REALISTA e DETALHADO
-- Cada dia deve ter entre 2-5 tarefas
-- Inclua instruções/contexto antes das tarefas de cada dia
-- Organize em módulos temáticos lógicos
-- Responda APENAS com o Markdown, sem explicações extras`;
-
 // ─── Provider Call Functions ───────────────────────────
 
 export async function callOpenAI(
