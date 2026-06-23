@@ -40,7 +40,7 @@ import { ExtraConsumptionModal } from "./extra-consumption-modal";
 import { WeeklyBufferBadge } from "./weekly-buffer-badge";
 
 export interface DailyChecklistProps {
-  /** Oculta o bloco “Resumo do dia” (ex.: widget `health_meals` na home). */
+  /** Oculta o bloco “Resumo do dia” e usa a apresentação compacta. */
   hideDailySummary?: boolean;
 }
 
@@ -266,7 +266,7 @@ export function DailyChecklist({
     dailyTarget > 0
       ? Math.min(100, Math.round((todayTotals.kcal / dailyTarget) * 100))
       : 0;
-  const isWidget = hideDailySummary;
+  const isCompact = hideDailySummary;
 
   function renderExtraCard() {
     const extraLogs = todayLogs.filter((l) => l.is_extra);
@@ -717,7 +717,7 @@ export function DailyChecklist({
     <div
       className={[
         "flex min-h-0 flex-col",
-        isWidget ? "h-full flex-1 gap-4" : "gap-5",
+        isCompact ? "h-full flex-1 gap-4" : "gap-5",
       ].join(" ")}
     >
       {/* Daily summary header */}
@@ -793,7 +793,7 @@ export function DailyChecklist({
         </div>
       )}
 
-      {isWidget ? (
+      {isCompact ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-auto px-3 py-3 sm:overscroll-y-contain sm:px-4 sm:py-4">
             <div className="flex flex-col gap-4">

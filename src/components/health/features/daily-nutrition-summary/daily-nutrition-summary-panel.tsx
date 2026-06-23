@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Flame } from "lucide-react";
 import { Button, Skeleton } from "@phfront/millennium-ui";
-import { WidgetSectionHeader } from "@/components/widgets/WidgetSectionHeader";
+import { SectionHeader } from "@/components/health/ui/SectionHeader";
 import { useDietPlan } from "@/hooks/health/use-diet-plan";
 import { useDietHistory } from "@/hooks/health/use-diet-history";
 import { useDietSettings } from "@/hooks/health/use-diet-settings";
@@ -16,7 +16,7 @@ import { WeeklyBufferBadge } from "@/components/health/features/daily-checklist/
 import { cn } from "@/lib/utils";
 
 /**
- * Resumo do dia (calorias + macros) para o widget da home.
+ * Resumo do dia com calorias e macronutrientes.
  * Reutiliza a mesma fonte de dados que o checklist de refeições.
  */
 export function DailyNutritionSummaryPanel({
@@ -77,7 +77,7 @@ export function DailyNutritionSummaryPanel({
           : "px-3 pt-3 pb-4"
       )}
     >
-      <WidgetSectionHeader
+      <SectionHeader
         className="shrink-0"
         variant="orange"
         icon={<Flame className="h-3.5 w-3.5" aria-hidden />}

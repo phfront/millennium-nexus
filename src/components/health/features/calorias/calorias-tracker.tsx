@@ -6,7 +6,7 @@ import { Button, Modal, Skeleton, useToast } from '@phfront/millennium-ui';
 import type { CaloriasLog, CaloriasSettings } from '@/types/calorias';
 import { formatKcal } from '@/lib/health/nutrition';
 import { formatActiveDaysLabel } from '@/lib/health/calorias';
-import { WidgetSectionHeader } from '@/components/widgets/WidgetSectionHeader';
+import { SectionHeader } from '@/components/health/ui/SectionHeader';
 
 const QUICK_ADD = [100, 250, 500] as const;
 
@@ -24,7 +24,7 @@ export type CaloriasTrackerProps = {
   todayTotal: number;
   todayRemaining: number;
   progressToday: number;
-  /** Quando false, sem cartão próprio (ex.: widget na grelha da home). */
+  /** Quando false, renderiza sem cartão próprio. */
   hasBackground?: boolean;
 };
 
@@ -53,11 +53,11 @@ export function CaloriasTracker({
   const todayLogs = logs.filter((l) => l.logged_date === today);
   const subtitle = `${formatActiveDaysLabel(settings.active_days)} · ${formatKcal(settings.daily_target_kcal)}/dia · ${formatKcal(weeklyTargetKcal)}/sem`;
   const subtitleShort = `${formatKcal(settings.daily_target_kcal)}/dia · ${formatKcal(weeklyTargetKcal)}/sem`;
-  const widgetSubtitle = `${subtitleShort} · Sem.: ${formatKcal(weekTotalKcal)} / ${formatKcal(weeklyTargetKcal)}${
+  const compactSubtitle = `${subtitleShort} · Sem.: ${formatKcal(weekTotalKcal)} / ${formatKcal(weeklyTargetKcal)}${
     weeklyRemaining <= 0 ? ' · Meta semanal OK' : ` · Faltam ${formatKcal(weeklyRemaining)} na sem.`
   }`;
   /** Mesmo padrão de grelha que `WaterTracker` na home (`hasBackground={false}`). */
-  const widgetLayout = !hasBackground;
+  const compactLayout = !hasBackground;
 
   async function handleAdd(amount: number) {
     try {
@@ -98,7 +98,7 @@ export function CaloriasTracker({
       <Skeleton
         variant="block"
         className={[
-          widgetLayout ? 'h-full min-h-0 w-full' : 'h-full min-h-[220px] w-full rounded-2xl',
+          compactLayout ? 'h-full min-h-0 w-full' : 'h-full min-h-[220px] w-full rounded-2xl',
         ].join(' ')}
       />
     );
@@ -109,7 +109,7 @@ export function CaloriasTracker({
 
   const shellClass = [
     'relative flex flex-col overflow-hidden',
-    widgetLayout ? 'h-full min-h-0' : 'min-h-[220px]',
+    compactLayout ? 'h-full min-h-0' : 'min-h-[220px]',
     hasBackground ? 'rounded-2xl border border-white/10 bg-surface-2/25 shadow-sm backdrop-blur-md' : '',
   ]
     .filter(Boolean)
@@ -147,15 +147,15 @@ export function CaloriasTracker({
       ) : null}
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-2 p-3">
-        <WidgetSectionHeader
+        <SectionHeader
           variant="primary"
           icon={<Flame className="h-3.5 w-3.5" aria-hidden />}
           title="Calorias"
-          subtitle={widgetLayout ? widgetSubtitle : subtitle}
+          subtitle={compactLayout ? compactSubtitle : subtitle}
           trailing={
             <span
               className={
-                widgetLayout
+                compactLayout
                   ? 'rounded-full bg-black/30 px-2 py-0.5 text-[10px] font-medium tabular-nums text-brand-primary ring-1 ring-white/10 sm:text-[11px]'
                   : 'rounded-full bg-brand-primary/20 px-2 py-0.5 text-[10px] font-medium tabular-nums text-brand-primary ring-1 ring-brand-primary/25 sm:text-[11px]'
               }
@@ -165,7 +165,7 @@ export function CaloriasTracker({
           }
         />
 
-        {widgetLayout ? null : (
+        {compactLayout ? null : (
           <div className="flex flex-wrap items-center gap-2">
             {weeklyRemaining <= 0 ? (
               <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-emerald-500/25">
@@ -189,10 +189,10 @@ export function CaloriasTracker({
             </span>
             <span className="text-[11px] text-text-muted sm:text-xs">
               / {effectiveTargetToday > 0 ? `${formatKcal(effectiveTargetToday)}` : '—'}
-              {!widgetLayout ? ' kcal hoje' : ''}
+              {!compactLayout ? ' kcal hoje' : ''}
             </span>
           </div>
-          {!widgetLayout && effectiveTargetToday > 0 ? (
+          {!compactLayout && effectiveTargetToday > 0 ? (
             <p className="text-[10px] text-text-muted sm:text-[11px]">
               Restam <span className="tabular-nums font-medium text-text-secondary">{formatKcal(todayRemaining)}</span>{' '}
               kcal para a meta de hoje
@@ -211,7 +211,7 @@ export function CaloriasTracker({
               style={{ width: `${fillPct}%` }}
             />
           </div>
-          {!widgetLayout ? (
+          {!compactLayout ? (
             <p className="text-[10px] text-text-muted tabular-nums">
               Semana: {formatKcal(weekTotalKcal)} / {formatKcal(weeklyTargetKcal)} kcal
             </p>
@@ -221,7 +221,7 @@ export function CaloriasTracker({
         <div
           className={[
             'grid min-h-0 flex-1 gap-2',
-            widgetLayout ? 'grid-cols-3' : 'grid-cols-3 sm:grid-cols-4',
+            compactLayout ? 'grid-cols-3' : 'grid-cols-3 sm:grid-cols-4',
           ].join(' ')}
         >
           {QUICK_ADD.map((kcal) => (
@@ -231,7 +231,7 @@ export function CaloriasTracker({
               onClick={() => void handleAdd(kcal)}
               className={[
                 'flex min-h-0 min-w-0 cursor-pointer flex-col items-center justify-center rounded-xl',
-                widgetLayout ? 'min-h-10 py-2.5' : 'py-2',
+                compactLayout ? 'min-h-10 py-2.5' : 'py-2',
                 'border border-white/12 bg-white/6 text-center',
                 'text-xs font-semibold tabular-nums leading-none text-text-primary sm:text-sm',
                 'transition hover:border-brand-primary/40 hover:bg-brand-primary/12 hover:text-text-primary',
@@ -246,7 +246,7 @@ export function CaloriasTracker({
             onClick={() => setShowOther(true)}
             className={[
               'flex min-h-0 min-w-0 cursor-pointer flex-col items-center justify-center rounded-xl',
-              widgetLayout ? 'min-h-10 py-2.5' : 'py-2',
+              compactLayout ? 'min-h-10 py-2.5' : 'py-2',
               'border border-white/12 bg-white/6 text-center',
               'text-xs font-semibold leading-none text-text-primary sm:text-sm',
               'transition hover:border-brand-primary/40 hover:bg-brand-primary/12 hover:text-text-primary',
@@ -266,7 +266,7 @@ export function CaloriasTracker({
             }
             className={[
               'flex min-h-0 min-w-0 cursor-pointer flex-col items-center justify-center rounded-xl',
-              widgetLayout ? 'col-span-2 min-h-10 py-2.5' : 'py-2',
+              compactLayout ? 'col-span-2 min-h-10 py-2.5' : 'py-2',
               'border border-white/12 bg-white/6 text-center',
               'text-xs font-semibold leading-none text-text-primary sm:text-sm',
               'transition hover:border-amber-400/35 hover:bg-amber-500/12 hover:text-amber-50',

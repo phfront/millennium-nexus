@@ -21,7 +21,7 @@ export function SidebarMenuButton({ controls = 'module-sidebar-drawer' }: Sideba
       aria-label="Abrir menu de navegação"
       aria-expanded={isOpen}
       aria-controls={controls}
-      className="shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-3 transition-colors cursor-pointer inline-flex"
+      className="relative z-10 shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-3 transition-colors cursor-pointer inline-flex touch-manipulation"
     >
       <Menu size={22} strokeWidth={2} />
     </button>

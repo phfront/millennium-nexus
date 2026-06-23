@@ -5,7 +5,12 @@ build
 out
 .env
 .env.*
+!.env.local.example
 *.log
 .DS_Store
 .vercel
 next-env.d.ts
+backups/
+scripts/cloudflared.exe
+tunnels/
+logs/

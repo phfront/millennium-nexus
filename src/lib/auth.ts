@@ -1,6 +1,10 @@
 import type { Session, User } from '@supabase/supabase-js';
 import type { CookieOptions } from '@supabase/ssr';
 import type { Profile } from './auth-types';
+import {
+  getSupabaseCookieOptions,
+  getSupabaseServerUrl,
+} from '@/lib/supabase/url';
 
 async function createSupabaseServerClient() {
   const { createServerClient } = await import('@supabase/ssr');
@@ -9,9 +13,10 @@ async function createSupabaseServerClient() {
   const cookieStore = await cookies();
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    getSupabaseServerUrl(),
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: getSupabaseCookieOptions(),
       cookies: {
         getAll() {
           return cookieStore.getAll();

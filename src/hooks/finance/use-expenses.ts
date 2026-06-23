@@ -327,7 +327,12 @@ export function useExpenses() {
     patch: Partial<
       Pick<
         ExpenseItem,
-        'name' | 'is_active' | 'default_amount' | 'is_recurring' | 'category_id' | 'due_day'
+        | 'name'
+        | 'is_active'
+        | 'default_amount'
+        | 'is_recurring'
+        | 'category_id'
+        | 'due_day'
       >
     >,
     monthRange?: { monthFrom: string; monthTo: string },

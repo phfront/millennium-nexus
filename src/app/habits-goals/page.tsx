@@ -16,10 +16,12 @@ import { getGoalValuesForDate } from '@/lib/habits-goals/goal-history';
 import { getLocalDateStr } from '@/lib/habits-goals/timezone';
 import {
   getPeriodWindowForDate,
+  getCalendarWeekWindow,
   isTrackerCompletedForView,
+  mealDiaryWeekLogsForTracker,
   sumNumericInWindow,
 } from '@/lib/habits-goals/period';
-import type { Log } from '@/types/habits-goals';
+import type { Log, Tracker } from '@/types/habits-goals';
 
 export default function DashboardPage() {
   const user = useUserStore((s) => s.user);
@@ -70,19 +72,61 @@ export default function DashboardPage() {
     await upsertLog(tracker, partial);
   }
 
+  function renderTrackerCard(tracker: Tracker) {
+    const weekWindow = getCalendarWeekWindow(selectedDate);
+    const periodNumericSum =
+      tracker.source_key === 'calories_burned'
+        ? sumNumericInWindow(tracker, logs, weekWindow)
+        : (tracker.period_aggregation ?? 'single') === 'aggregate' &&
+            (tracker.type === 'counter' || tracker.type === 'slider')
+          ? sumNumericInWindow(tracker, logs, getPeriodWindowForDate(tracker, selectedDate))
+          : null;
+    const mealDiaryWeekLogs = mealDiaryWeekLogsForTracker(tracker, logs, selectedDate);
+
+    return (
+      <TrackerCard
+        key={tracker.id}
+        tracker={tracker}
+        log={getLogForTracker(tracker)}
+        periodNumericSum={periodNumericSum}
+        mealDiaryWeekLogs={mealDiaryWeekLogs}
+        isSaving={savingTrackerId === tracker.id}
+        readonly={isViewingPast}
+        viewDate={isViewingPast ? selectedDate : undefined}
+        onLogChange={handleLogChange}
+        variant="dashboard"
+      />
+    );
+  }
+
+  const leftColumnTrackers = trackers.filter((_, index) => index % 2 === 0);
+  const rightColumnTrackers = trackers.filter((_, index) => index % 2 === 1);
+
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-4 max-w-3xl mx-auto max-md:pb-28">
-        <Skeleton variant="block" className="h-24 w-full" />
-        {[1, 2, 3].map((i) => (
-          <Skeleton key={i} variant="block" className="h-36 w-full" />
-        ))}
+      <div className="mx-auto flex max-w-5xl flex-col gap-5 max-md:pb-28">
+        <Skeleton variant="block" className="h-28 w-full rounded-2xl" />
+        <div className="flex flex-col gap-3 sm:hidden">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} variant="block" className="h-44 w-full rounded-xl" />
+          ))}
+        </div>
+        <div className="hidden gap-4 sm:flex">
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <Skeleton variant="block" className="h-44 w-full rounded-2xl" />
+            <Skeleton variant="block" className="h-36 w-full rounded-2xl" />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <Skeleton variant="block" className="h-36 w-full rounded-2xl" />
+            <Skeleton variant="block" className="h-44 w-full rounded-2xl" />
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4 max-w-3xl mx-auto max-md:pb-24">
+    <div className="mx-auto flex max-w-5xl flex-col gap-5 max-md:pb-24">
       <DailyProgressHeader
         completed={completed}
         total={dailyForHeader.length}
@@ -98,46 +142,39 @@ export default function DashboardPage() {
       )}
 
       {trackers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-4xl mb-3">🎯</p>
-          <p className="text-text-primary font-semibold">Nenhuma meta ativa</p>
-          <p className="text-sm text-text-muted mt-1">Crie sua primeira meta para começar a rastrear.</p>
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-surface-2/50 px-6 py-16 text-center">
+          <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-primary/10 text-brand-primary ring-1 ring-inset ring-brand-primary/20">
+            <Plus size={24} aria-hidden />
+          </span>
+          <p className="font-semibold text-text-primary">Nenhuma meta ativa</p>
+          <p className="mt-1 max-w-sm text-sm text-text-muted">
+            Crie sua primeira meta para começar a acompanhar hábitos e progresso diário.
+          </p>
           <Link
             href="/habits-goals/config/new"
-            className="mt-4 px-4 py-2 rounded-lg bg-brand-primary text-white text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer inline-flex"
+            className="mt-5 inline-flex rounded-xl bg-brand-primary px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
           >
             Criar meta
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {trackers.map((tracker) => {
-            const w = getPeriodWindowForDate(tracker, selectedDate);
-            const periodNumericSum =
-              (tracker.period_aggregation ?? 'single') === 'aggregate' &&
-              (tracker.type === 'counter' || tracker.type === 'slider')
-                ? sumNumericInWindow(tracker, logs, w)
-                : null;
-            return (
-              <TrackerCard
-                key={tracker.id}
-                tracker={tracker}
-                log={getLogForTracker(tracker)}
-                periodNumericSum={periodNumericSum}
-                isSaving={savingTrackerId === tracker.id}
-                readonly={isViewingPast}
-                viewDate={isViewingPast ? selectedDate : undefined}
-                onLogChange={handleLogChange}
-              />
-            );
-          })}
-        </div>
+        <>
+          <div className="flex flex-col gap-3 sm:hidden">{trackers.map((tracker) => renderTrackerCard(tracker))}</div>
+          <div className="hidden gap-4 sm:flex">
+            <div className="flex min-w-0 flex-1 flex-col gap-3">
+              {leftColumnTrackers.map((tracker) => renderTrackerCard(tracker))}
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-3">
+              {rightColumnTrackers.map((tracker) => renderTrackerCard(tracker))}
+            </div>
+          </div>
+        </>
       )}
 
       {/* FAB */}
       <Link
         href="/habits-goals/config/new"
-        className="fixed bottom-24 right-4 md:bottom-6 md:right-6 w-14 h-14 rounded-full bg-brand-primary shadow-lg flex items-center justify-center text-white hover:opacity-90 active:scale-95 transition-all z-40 cursor-pointer"
+        className="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-primary text-white shadow-lg shadow-brand-primary/20 transition-all hover:opacity-90 active:scale-95 md:bottom-6 md:right-6"
         aria-label="Nova meta"
       >
         <Plus size={24} />

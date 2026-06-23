@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button, Input, Alert } from '@phfront/millennium-ui';
 import { BrandLogo } from '@/components/shell/BrandLogo';
 import { createClient } from '@/lib/supabase/client';
@@ -14,7 +13,6 @@ const heroGradientStyle = {
 } as const;
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -26,25 +24,31 @@ export default function LoginPage() {
     setError(null);
     setIsLoading(true);
 
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    const normalizedEmail = email.trim().toLowerCase();
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: normalizedEmail, password }),
+    });
 
-    if (authError) {
-      setError(parseSupabaseError(authError));
+    if (!response.ok) {
+      const result = (await response.json().catch(() => null)) as { error?: string } | null;
+      setError(parseSupabaseError({ message: result?.error }));
       setIsLoading(false);
       return;
     }
 
-    router.push('/');
-    router.refresh();
+    window.location.assign('/');
   }
 
   async function handleForgotPassword() {
-    if (!email) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
       setError('Informe seu e-mail antes de redefinir a senha.');
       return;
     }
-    if (!isValidEmail(email)) {
+    if (!isValidEmail(normalizedEmail)) {
       setError('Informe um e-mail válido.');
       return;
     }
@@ -52,7 +56,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     const supabase = createClient();
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
       redirectTo: `${window.location.origin}/profile`,
     });
 

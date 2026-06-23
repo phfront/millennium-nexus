@@ -5,8 +5,7 @@ import { UserProvider } from '@/components/providers/UserProvider';
 import { AppSidebar } from '@/components/shell/AppSidebar';
 import { AppHeader } from '@/components/shell/AppHeader';
 import { MobileSidebarProvider } from '@/components/shell/MobileSidebarContext';
-import { fetchDeniedModuleIdsForUser, fetchActiveModuleIdsForUser, filterModulesForNav } from '@/lib/modules/access';
-import type { Module } from '@/types/database';
+import { getNavModulesForUser } from '@/lib/navigation/get-nav-modules';
 
 export default async function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const user = await getUser();
@@ -21,15 +20,10 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
     .from('profiles')
     .upsert({ id: user.id } as never, { onConflict: 'id', ignoreDuplicates: true });
 
-  const [profile, { data: modulesData }, deniedModuleIds, activeModuleIds] = await Promise.all([
+  const [profile, modules] = await Promise.all([
     getUserProfile(user.id),
-    supabase.from('modules').select('*').order('sort_order', { ascending: true }),
-    fetchDeniedModuleIdsForUser(supabase, user.id),
-    fetchActiveModuleIdsForUser(supabase, user.id),
+    getNavModulesForUser(user.id),
   ]);
-
-  const allModules = (modulesData ?? []) as Module[];
-  const modules = filterModulesForNav(allModules, deniedModuleIds);
 
   return (
     <UserProvider user={user} profile={profile}>

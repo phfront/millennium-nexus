@@ -52,37 +52,23 @@ export function ModuleSidebarShell({ children, drawerId = 'module-sidebar-drawer
         {children({ onClose: () => {}, isMobile: false })}
       </nav>
 
-      {/* Mobile drawer (animated) — always rendered to allow exit transitions */}
-      <div
-        className={[
-          'md:hidden fixed inset-0 z-50',
-          isOpen ? 'pointer-events-auto' : 'pointer-events-none',
-        ].join(' ')}
-        aria-hidden={!isOpen}
-      >
-        {/* Overlay */}
-        <div
-          onClick={close}
-          className={[
-            'absolute inset-0 bg-black/60 backdrop-blur-sm',
-            'transition-opacity duration-300 ease-out',
-            isOpen ? 'opacity-100' : 'opacity-0',
-          ].join(' ')}
-        />
-        {/* Drawer panel */}
-        <nav
-          id={drawerId}
-          aria-label="Navegação principal"
-          className={[
-            'relative flex h-full w-72 max-w-[85vw] flex-col bg-surface-2 shadow-2xl',
-            'transition-transform duration-300 ease-out',
-            'will-change-transform',
-            isOpen ? 'translate-x-0' : '-translate-x-full',
-          ].join(' ')}
-        >
-          {children({ onClose: close, isMobile: true })}
-        </nav>
-      </div>
+      {isOpen && (
+        <div className="md:hidden fixed inset-0 z-50">
+          <button
+            type="button"
+            onClick={close}
+            aria-label="Fechar menu de navegação"
+            className="absolute inset-0 h-full w-full bg-black/60 backdrop-blur-sm"
+          />
+          <nav
+            id={drawerId}
+            aria-label="Navegação principal"
+            className="relative flex h-full w-72 max-w-[85vw] flex-col bg-surface-2 shadow-2xl"
+          >
+            {children({ onClose: close, isMobile: true })}
+          </nav>
+        </div>
+      )}
     </>
   );
 }

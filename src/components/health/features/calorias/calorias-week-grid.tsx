@@ -5,7 +5,7 @@ import { CalendarRange, Check } from 'lucide-react';
 import { Button, Modal, Skeleton, useToast } from '@phfront/millennium-ui';
 import type { CaloriasLog, CaloriasSettings } from '@/types/calorias';
 import { formatKcal } from '@/lib/health/nutrition';
-import { WidgetSectionHeader } from '@/components/widgets/WidgetSectionHeader';
+import { SectionHeader } from '@/components/health/ui/SectionHeader';
 import {
   calcCaloriasProgress,
   dayIndexMon0Sun6,
@@ -29,7 +29,7 @@ export type CaloriasWeekGridProps = {
   isLoading: boolean;
   addKcal: (amount: number, note?: string | null, loggedDate?: string) => Promise<CaloriasLog>;
   undoLastForDate: (loggedDate: string) => Promise<void>;
-  /** Quando false, sem cartão próprio (ex.: widget na grelha da home). */
+  /** Quando false, renderiza sem cartão próprio. */
   hasBackground?: boolean;
 };
 
@@ -289,7 +289,7 @@ export function CaloriasWeekGrid({
     <div className={rootClass}>
       {embed ? (
         <div className="relative z-10 flex h-full min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3">
-          <WidgetSectionHeader
+          <SectionHeader
             variant="primary"
             icon={<CalendarRange className="h-3.5 w-3.5" aria-hidden />}
             title="Esta semana"

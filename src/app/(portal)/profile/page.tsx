@@ -28,6 +28,7 @@ import {
   resetBrandColors,
   saveBrandColors as saveBrandColorsAction,
   updateAIConfig,
+  updateHomeModulePreference,
   updateThemePreference,
 } from "./actions";
 import { createClient } from "@/lib/supabase/client";
@@ -37,6 +38,7 @@ import { PwaInstallCard } from "@/components/pwa/PwaInstallCard";
 import { AI_PROVIDERS, AI_MODELS, DEFAULT_MODELS } from "@/lib/ai";
 import type { AIProvider } from "@/lib/ai";
 import type { Profile } from "@/types/database";
+import { HOME_MODULE_OPTIONS, type HomeModuleSlug } from "@/lib/navigation/home-module";
 
 const TIMEZONE_OPTIONS = [
   {
@@ -121,8 +123,12 @@ export default function ProfilePage() {
   const [aiApiKeyMasked, setAiApiKeyMasked] = useState(false);
   const [aiModel, setAiModel] = useState<string>(profile?.ai_model ?? '');
   const [isSavingAI, startSavingAI] = useTransition();
+  const [isSavingHomeModule, startSavingHomeModule] = useTransition();
   const [aiTestResult, setAiTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isTestingAI, setIsTestingAI] = useState(false);
+  const [homeModuleSlug, setHomeModuleSlug] = useState<HomeModuleSlug | "">(
+    profile?.home_module_slug ?? ""
+  );
 
   useEffect(() => {
     if (profile) {
@@ -143,6 +149,7 @@ export default function ProfilePage() {
         setAiApiKey('');
         setAiApiKeyMasked(false);
       }
+      setHomeModuleSlug(profile.home_module_slug ?? "");
     }
   }, [profile]);
 
@@ -298,6 +305,19 @@ export default function ProfilePage() {
     if (!result.success) {
       toast.error("Erro ao salvar tema", result.error);
     }
+  }
+
+  async function handleSaveHomeModule() {
+    startSavingHomeModule(async () => {
+      const result = await updateHomeModulePreference(homeModuleSlug || null);
+
+      if (!result.success) {
+        toast.error("Erro ao salvar home", result.error);
+      } else if (result.data) {
+        updateProfileInStore(result.data);
+        toast.success("Home atualizada!", "Sua home principal foi salva.");
+      }
+    });
   }
 
   return (
@@ -684,6 +704,35 @@ export default function ProfilePage() {
         <Card.Footer className="justify-end">
           <Button onClick={handleSaveProfile} isLoading={isSaving}>
             Salvar preferências
+          </Button>
+        </Card.Footer>
+      </Card>
+
+      <Card>
+        <Card.Header>
+          <h2 className="text-sm font-semibold text-text-primary">
+            Home principal
+          </h2>
+        </Card.Header>
+        <Card.Body className="space-y-5">
+          <p className="text-xs text-text-muted">
+            Escolha qual mÃ³dulo deve abrir quando vocÃª entrar na home geral do portal.
+          </p>
+
+          <Select
+            label="Dashboard da home"
+            value={homeModuleSlug}
+            options={[
+              { value: "", label: "Escolher manualmente na home" },
+              ...HOME_MODULE_OPTIONS,
+            ]}
+            onChange={(v: string) => setHomeModuleSlug(v as HomeModuleSlug | "")}
+            helperText="VocÃª pode alterar isso a qualquer momento."
+          />
+        </Card.Body>
+        <Card.Footer className="justify-end">
+          <Button onClick={handleSaveHomeModule} isLoading={isSavingHomeModule}>
+            Salvar home principal
           </Button>
         </Card.Footer>
       </Card>

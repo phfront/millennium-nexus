@@ -783,7 +783,7 @@ export function ExpensesSheet() {
                           style={tint.cell ? { backgroundColor: tint.cell } : undefined}
                         >
                           <div
-                            className="w-full cursor-pointer select-none [-webkit-touch-callout:none]"
+                            className="relative w-full cursor-pointer select-none [-webkit-touch-callout:none]"
                             onContextMenu={
                               effective > 0
                                 ? (e) => {

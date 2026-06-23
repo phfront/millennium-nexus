@@ -34,17 +34,17 @@ export function ModuleHeader() {
   const backToMetas = isMetasEditorRoute(pathname);
 
   return (
-    <header className="md:hidden flex items-center gap-1 px-3 h-14 pt-[env(safe-area-inset-top,0px)] bg-surface-2 border-b border-border shrink-0">
+    <header className="relative z-40 md:hidden flex items-center gap-1 px-3 h-14 pt-[env(safe-area-inset-top,0px)] bg-surface-2 border-b border-border shrink-0">
       {backToMetas ? (
         <a
           href="/habits-goals/config"
           aria-label="Voltar à lista de metas"
-          className="shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-3 transition-colors cursor-pointer inline-flex"
+          className="relative z-10 shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-3 transition-colors cursor-pointer inline-flex touch-manipulation"
         >
           <ArrowLeft size={22} strokeWidth={2} />
         </a>
       ) : (
-        <SidebarMenuButton controls="habits-goals-module-sidebar" />
+        <SidebarMenuButton controls="app-mobile-sidebar" />
       )}
       <h1 className="flex-1 min-w-0 text-sm font-semibold text-text-primary text-center truncate px-1">
         {pageLabel}
@@ -52,7 +52,7 @@ export function ModuleHeader() {
       <a
         href="/profile"
         aria-label="Abrir perfil no portal"
-        className="cursor-pointer shrink-0 rounded-full p-0.5 hover:ring-2 hover:ring-brand-primary/30 transition-shadow"
+        className="relative z-10 cursor-pointer shrink-0 rounded-full p-0.5 hover:ring-2 hover:ring-brand-primary/30 transition-shadow touch-manipulation"
       >
         <Avatar
           src={profile?.avatar_url}

@@ -1,6 +1,80 @@
 import type { Log, Tracker } from '@/types/habits-goals';
+import { isMealDiaryGoalMet, parseMealDiaryConfig, parseMealDiaryLogNote } from '@/lib/habits-goals/meal-diary';
 
 export type PeriodWindow = { startStr: string; endStr: string };
+
+export function isChecklistComplete(
+  checked: boolean[] | null | undefined,
+  itemsLen: number,
+): boolean {
+  if (itemsLen <= 0) return false;
+  const values = checked ?? [];
+  return values.length >= itemsLen && values.every(Boolean);
+}
+
+export function isMealDiaryCompleteFromLog(tracker: Tracker, log: Log | null | undefined): boolean {
+  if (!log) return false;
+  const config = parseMealDiaryConfig(tracker.source_config);
+  return isMealDiaryGoalMet(config, parseMealDiaryLogNote(log.note).entries);
+}
+
+/** Conclusão a partir de um log (e soma agregada opcional), usada em cards e heatmap. */
+export function isTrackerCompleteFromLog(
+  tracker: Tracker,
+  log: Log | null | undefined,
+  effectiveGoal: number | null,
+  periodSum?: number | null,
+): boolean {
+  if (tracker.source_key === 'meal_diary') {
+    return isMealDiaryCompleteFromLog(tracker, log);
+  }
+
+  const goal = effectiveGoal ?? 0;
+
+  if (tracker.type === 'boolean') return log?.value === 1;
+
+  if (tracker.type === 'checklist') {
+    return isChecklistComplete(log?.checked_items, tracker.checklist_items?.length ?? 0);
+  }
+
+  if (tracker.type === 'counter' || tracker.type === 'slider') {
+    if ((tracker.period_aggregation ?? 'single') === 'aggregate' && periodSum != null) {
+      return periodSum >= goal;
+    }
+    if (!log) return false;
+    return (log.value ?? 0) >= goal;
+  }
+
+  return false;
+}
+
+export function mealDiaryWeekLogsForTracker(
+  tracker: Tracker,
+  logs: Log[],
+  viewDate: string,
+): Log[] | undefined {
+  if (tracker.source_key !== 'meal_diary') return undefined;
+  const weekWindow = getCalendarWeekWindow(viewDate);
+  return logs.filter(
+    (l) =>
+      l.tracker_id === tracker.id &&
+      l.created_at >= weekWindow.startStr &&
+      l.created_at <= weekWindow.endStr,
+  );
+}
+
+export function getCalendarWeekWindow(dateStr: string): PeriodWindow {
+  const { y, m, d } = parseYmd(dateStr);
+  const date = new Date(y, m - 1, d);
+  const offset = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - offset);
+  const startStr = formatYmd(date.getFullYear(), date.getMonth() + 1, date.getDate());
+  date.setDate(date.getDate() + 6);
+  return {
+    startStr,
+    endStr: formatYmd(date.getFullYear(), date.getMonth() + 1, date.getDate()),
+  };
+}
 
 function parseYmd(s: string): { y: number; m: number; d: number } {
   const [y, m, d] = s.split('-').map(Number);
@@ -85,6 +159,20 @@ export function fetchDateBoundsForTrackers(trackers: Tracker[], targetDate: stri
 }
 
 /** Soma `value` dos logs do tracker na janela (counter/slider). */
+/** Todas as datas civis inclusivas entre startStr e endStr (YYYY-MM-DD). */
+export function enumerateDatesInWindow(window: PeriodWindow): string[] {
+  const dates: string[] = [];
+  const { y, m, d } = parseYmd(window.startStr);
+  const cur = new Date(y, m - 1, d);
+  const end = parseYmd(window.endStr);
+  const endDt = new Date(end.y, end.m - 1, end.d);
+  while (cur <= endDt) {
+    dates.push(formatYmd(cur.getFullYear(), cur.getMonth() + 1, cur.getDate()));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
 export function sumNumericInWindow(tracker: Tracker, logs: Log[], window: PeriodWindow): number {
   return logs
     .filter(
@@ -120,6 +208,14 @@ export function isPeriodCompleteFromLogs(
   const goal = Number(tracker.goal_value ?? 0);
   const agg = (tracker.period_aggregation ?? 'single') === 'aggregate';
 
+  if (tracker.source_key === 'meal_diary') {
+    if (agg) {
+      return inWin.some((l) => isMealDiaryCompleteFromLog(tracker, l));
+    }
+    const row = inWin.find((l) => l.created_at === window.startStr);
+    return isMealDiaryCompleteFromLog(tracker, row);
+  }
+
   if (tracker.type === 'boolean') {
     return inWin.some((l) => l.value === 1);
   }
@@ -127,14 +223,10 @@ export function isPeriodCompleteFromLogs(
     const itemsLen = tracker.checklist_items?.length ?? 0;
     if (itemsLen === 0) return false;
     if (agg) {
-      return inWin.some((l) => {
-        const c = l.checked_items ?? [];
-        return c.length >= itemsLen && c.every(Boolean);
-      });
+      return inWin.some((l) => isChecklistComplete(l.checked_items, itemsLen));
     }
     const row = inWin.find((l) => l.created_at === window.startStr);
-    const c = row?.checked_items ?? [];
-    return c.length >= itemsLen && c.every(Boolean);
+    return isChecklistComplete(row?.checked_items, itemsLen);
   }
   if (tracker.type === 'counter' || tracker.type === 'slider') {
     const sum = inWin.reduce((s, l) => s + Number(l.value ?? 0), 0);
@@ -151,14 +243,5 @@ export function isTrackerCompletedForView(
   periodSum: number | null,
   effectiveGoal: number | null,
 ): boolean {
-  const goal = effectiveGoal ?? 0;
-  if (tracker.type === 'boolean') return log?.value === 1;
-  if (tracker.type === 'checklist') return (log?.checked_items ?? []).every(Boolean);
-  if (tracker.type === 'counter' || tracker.type === 'slider') {
-    if ((tracker.period_aggregation ?? 'single') === 'aggregate' && periodSum != null) {
-      return periodSum >= goal;
-    }
-    return (log?.value ?? 0) >= goal;
-  }
-  return false;
+  return isTrackerCompleteFromLog(tracker, log, effectiveGoal, periodSum);
 }

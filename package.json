@@ -4,10 +4,28 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev -H 0.0.0.0 -p 3030",
+    "dev": "node --max-http-header-size=65536 ./node_modules/next/dist/bin/next dev -H 0.0.0.0 -p 3030",
     "build": "next build",
-    "start": "next start -H 0.0.0.0 -p 3030",
-    "lint": "next lint"
+    "start": "node --max-http-header-size=65536 ./node_modules/next/dist/bin/next start -H 0.0.0.0 -p 3030",
+    "lint": "next lint",
+    "local:dev": "powershell -ExecutionPolicy Bypass -File ./scripts/local-dev.ps1",
+    "local:prod": "powershell -ExecutionPolicy Bypass -File ./scripts/local-prod.ps1",
+    "local:up": "powershell -ExecutionPolicy Bypass -File ./scripts/local-up.ps1",
+    "local:down": "powershell -ExecutionPolicy Bypass -File ./scripts/local-down.ps1",
+    "local:status": "powershell -ExecutionPolicy Bypass -File ./scripts/local-status.ps1",
+    "local:backup": "powershell -ExecutionPolicy Bypass -File ./scripts/backup-db.ps1",
+    "local:restore": "powershell -ExecutionPolicy Bypass -File ./scripts/restore-db.ps1",
+    "local:cloud-pull": "powershell -ExecutionPolicy Bypass -File ./scripts/cloud-to-local.ps1",
+    "local:tailscale": "powershell -ExecutionPolicy Bypass -File ./scripts/tailscale-serve.ps1",
+    "tunnel:cloudflare": "powershell -ExecutionPolicy Bypass -File ./scripts/tunnel-cloudflare.ps1",
+    "tunnel:funnel": "powershell -ExecutionPolicy Bypass -File ./scripts/tunnel-funnel.ps1",
+    "tunnel:setup": "powershell -ExecutionPolicy Bypass -File ./scripts/tunnel-setup.ps1",
+    "tunnel:autostart": "powershell -ExecutionPolicy Bypass -File ./scripts/tunnel-autostart.ps1",
+    "tunnel:install-autostart": "powershell -ExecutionPolicy Bypass -File ./scripts/tunnel-install-autostart.ps1",
+    "tunnel:env": "powershell -ExecutionPolicy Bypass -File ./scripts/tunnel-env.ps1",
+    "tunnel:down": "powershell -ExecutionPolicy Bypass -File ./scripts/tunnel-down.ps1",
+    "prod:autostart": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/prod-autostart.ps1",
+    "prod:install-autostart": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/prod-install-autostart.ps1"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
@@ -21,6 +39,8 @@
     "lucide-react": "^0.511.0",
     "next": "^15.0.0",
     "next-remove-imports": "^1.0.13",
+    "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^6.0.227",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "recharts": "^2.15.0",
@@ -37,6 +57,7 @@
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.0.0",
     "sharp": "^0.33.5",
+    "supabase": "^2.106.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.6.0"
   }

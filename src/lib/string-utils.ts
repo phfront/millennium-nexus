@@ -2,6 +2,21 @@ export function stripAccents(text: string): string {
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+/** Texto normalizado para busca (sem acentos, minúsculas, sem pontuação). */
+export function normalizeForSearch(text: string): string {
+  return stripAccents(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function searchTextMatches(haystack: string, needle: string): boolean {
+  const normalizedNeedle = normalizeForSearch(needle);
+  if (!normalizedNeedle) return true;
+  return normalizeForSearch(haystack).includes(normalizedNeedle);
+}
+
 export function toSlug(text: string): string {
   return stripAccents(text)
     .toLowerCase()

@@ -18,6 +18,8 @@ export type Profile = {
   ai_api_key: string | null;
   /** Modelo preferido (ex: gpt-4o-mini, gemini-2.0-flash) */
   ai_model: string | null;
+  /** Módulo que deve abrir na home geral. */
+  home_module_slug: 'finance' | 'health' | 'habits-goals' | null;
 };
 
 export type AuthUser = {

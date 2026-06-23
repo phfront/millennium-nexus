@@ -17,5 +17,5 @@ export default async function HealthModuleEntryPage() {
     redirect('/setup');
   }
 
-  redirect('/health/nutrition');
+  redirect('/health/peso');
 }

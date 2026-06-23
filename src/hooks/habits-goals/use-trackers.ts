@@ -5,6 +5,13 @@ import { createClient } from '@/lib/supabase/client';
 import { useUserStore } from '@/store/user-store';
 import type { Tracker } from '@/types/habits-goals';
 
+function trackerMutationError(error: { code?: string; message: string }): Error {
+  if (error.code === '23505' && error.message.includes('uq_trackers_active_specific_source')) {
+    return new Error('Já existe uma meta ativa deste tipo. Desative a atual antes de ativar outra.');
+  }
+  return new Error(error.message);
+}
+
 export type UseTrackersOptions = {
   /** Incluir metas removidas (soft delete), p.ex. para o histórico por dia. */
   includeDeleted?: boolean;
@@ -27,6 +34,7 @@ export function useTrackers(activeOnly = false, options?: UseTrackersOptions) {
       .from('trackers')
       .select('*')
       .eq('user_id', user.id)
+      .order('sort_order', { ascending: true })
       .order('label', { ascending: true });
 
     if (!includeDeleted) {
@@ -53,12 +61,19 @@ export function useTrackers(activeOnly = false, options?: UseTrackersOptions) {
   async function createTracker(payload: Omit<Tracker, 'id' | 'user_id' | 'created_at' | 'deleted_at'>) {
     if (!user) return null;
     const supabase = createClient();
+    const nextSortOrder =
+      trackers.length > 0 ? Math.max(...trackers.map((tracker) => tracker.sort_order)) + 1 : 0;
     const { data, error: err } = await supabase
       .from('trackers')
-      .insert({ ...payload, user_id: user.id, deleted_at: null })
+      .insert({
+        ...payload,
+        sort_order: nextSortOrder,
+        user_id: user.id,
+        deleted_at: null,
+      })
       .select()
       .single();
-    if (err) throw new Error(err.message);
+    if (err) throw trackerMutationError(err);
     await fetchTrackers();
     return data as Tracker;
   }
@@ -69,7 +84,7 @@ export function useTrackers(activeOnly = false, options?: UseTrackersOptions) {
       .from('trackers')
       .update(payload)
       .eq('id', id);
-    if (err) throw new Error(err.message);
+    if (err) throw trackerMutationError(err);
     await fetchTrackers();
   }
 
@@ -86,5 +101,44 @@ export function useTrackers(activeOnly = false, options?: UseTrackersOptions) {
     await fetchTrackers();
   }
 
-  return { trackers, isLoading, error, refetch: fetchTrackers, createTracker, updateTracker, deleteTracker };
+  async function reorderTrackers(orderedIds: string[]) {
+    const previous = trackers;
+    const byId = new Map(trackers.map((tracker) => [tracker.id, tracker]));
+    const reordered = orderedIds
+      .map((id, index) => {
+        const tracker = byId.get(id);
+        return tracker ? { ...tracker, sort_order: index } : null;
+      })
+      .filter((tracker): tracker is Tracker => tracker != null);
+
+    if (reordered.length !== orderedIds.length) {
+      throw new Error('Ordem inválida.');
+    }
+
+    setTrackers(reordered);
+
+    const supabase = createClient();
+    const results = await Promise.all(
+      orderedIds.map((id, index) =>
+        supabase.from('trackers').update({ sort_order: index }).eq('id', id),
+      ),
+    );
+
+    const failed = results.find((result) => result.error);
+    if (failed?.error) {
+      setTrackers(previous);
+      throw new Error(failed.error.message);
+    }
+  }
+
+  return {
+    trackers,
+    isLoading,
+    error,
+    refetch: fetchTrackers,
+    createTracker,
+    updateTracker,
+    deleteTracker,
+    reorderTrackers,
+  };
 }

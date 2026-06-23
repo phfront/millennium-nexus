@@ -14,6 +14,7 @@ import {
   Wallet,
   SlidersHorizontal,
   History,
+  Download,
 } from 'lucide-react';
 
 const NAV_LINKS = [
@@ -52,6 +53,13 @@ function SidebarBody({ onClose }: { onClose: () => void }) {
           icon={<SlidersHorizontal size={18} />}
           label="Configurações"
           isActive={pathname === '/finance/settings'}
+          onClick={onClose}
+        />
+        <NavItem
+          href="/finance/export"
+          icon={<Download size={18} />}
+          label="Exportar backup"
+          isActive={pathname === '/finance/export'}
           onClick={onClose}
         />
         <Divider />

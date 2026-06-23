@@ -2,9 +2,10 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getUser, getUserProfile } from '@/lib/auth';
 import { UserProvider } from '@/components/providers/UserProvider';
-import { ModuleSidebar } from '@/components/habits-goals/shell/ModuleSidebar';
+import { AppSidebar } from '@/components/shell/AppSidebar';
 import { ModuleHeader } from '@/components/habits-goals/shell/ModuleHeader';
 import { MobileSidebarProvider } from '@/components/shell/MobileSidebarContext';
+import { getNavModulesForUser } from '@/lib/navigation/get-nav-modules';
 
 export const metadata: Metadata = {
   title: 'Hábitos e Metas — Millennium Nexus',
@@ -18,13 +19,16 @@ export default async function HabitsGoalsLayout({ children }: { children: React.
     redirect('/login');
   }
 
-  const profile = await getUserProfile(user.id);
+  const [profile, modules] = await Promise.all([
+    getUserProfile(user.id),
+    getNavModulesForUser(user.id),
+  ]);
 
   return (
     <UserProvider user={user} profile={profile}>
       <MobileSidebarProvider>
         <div className="flex h-screen overflow-hidden bg-surface-1">
-          <ModuleSidebar />
+          <AppSidebar modules={modules} />
           <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
             <ModuleHeader />
             <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-6">

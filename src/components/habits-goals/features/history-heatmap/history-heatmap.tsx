@@ -7,6 +7,7 @@ import { CalendarHeatmap, Skeleton } from '@phfront/millennium-ui';
 import { isTrackerScheduledForDate } from '@/lib/habits-goals/scheduling';
 import { maxPossiblePointsForTracker } from '@/lib/habits-goals/scoring';
 import { getGoalValuesForDate } from '@/lib/habits-goals/goal-history';
+import { isTrackerCompleteFromLog } from '@/lib/habits-goals/period';
 import type { DayCompletionData, Log, Tracker } from '@/types/habits-goals';
 
 interface HistoryHeatmapProps {
@@ -111,18 +112,14 @@ export function HistoryHeatmap({ selectedDate, onSelectDate, refreshKey }: Histo
         const goalValuesForDate = goalValuesByDate.get(dateStr) ?? new Map();
         for (const t of ts) {
           const log = logByTracker.get(t.id);
-          if (!log) continue;
-          let done = false;
-          // Usa o valor histórico da meta ou o valor atual do tracker
           const historicalGoalValue = goalValuesForDate.get(t.id);
-          const effectiveGoalValue = historicalGoalValue !== null && historicalGoalValue !== undefined
-            ? historicalGoalValue
-            : t.goal_value;
-          if (t.type === 'boolean') done = log.value === 1;
-          else if (t.type === 'counter' || t.type === 'slider')
-            done = (log.value ?? 0) >= (effectiveGoalValue ?? 0);
-          else if (t.type === 'checklist') done = (log.checked_items ?? []).every(Boolean);
-          if (done) completed++;
+          const effectiveGoalValue =
+            historicalGoalValue !== null && historicalGoalValue !== undefined
+              ? historicalGoalValue
+              : t.goal_value;
+          if (isTrackerCompleteFromLog(t, log, effectiveGoalValue ?? null)) {
+            completed++;
+          }
         }
 
         const pointsEarned = ts.reduce(

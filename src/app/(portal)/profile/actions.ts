@@ -2,14 +2,16 @@
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseServerUrl } from '@/lib/supabase/url';
 import type { Profile } from '@/lib/auth-types';
+import { isHomeModuleSlug, type HomeModuleSlug } from '@/lib/navigation/home-module';
 
 async function getAuthenticatedClient() {
   const userSupabase = await createClient();
   const { data: { user } } = await userSupabase.auth.getUser();
   if (!user) return { supabase: null, userId: null };
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseUrl = getSupabaseServerUrl();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const adminSupabase = supabaseUrl && serviceRoleKey
     ? createSupabaseClient(supabaseUrl, serviceRoleKey)
@@ -158,6 +160,40 @@ export async function updateThemePreference(
     if (error) return { success: false, error: error.message };
 
     return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+export async function updateHomeModulePreference(
+  homeModuleSlug: HomeModuleSlug | null
+): Promise<{ success: boolean; data?: Profile; error?: string }> {
+  try {
+    if (homeModuleSlug !== null && !isHomeModuleSlug(homeModuleSlug)) {
+      return { success: false, error: 'Invalid home module' };
+    }
+
+    const { supabase, userId } = await getAuthenticatedClient();
+    if (!supabase || !userId) return { success: false, error: 'Not authenticated' };
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        home_module_slug: homeModuleSlug,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq('id', userId);
+
+    if (error) return { success: false, error: error.message };
+
+    const { data, error: selectError } = await supabase
+      .from('profiles').select().eq('id', userId).maybeSingle();
+
+    if (selectError || !data) {
+      return { success: false, error: selectError?.message || 'Failed to update home module' };
+    }
+
+    return { success: true, data: data as Profile };
   } catch (err) {
     return { success: false, error: String(err) };
   }

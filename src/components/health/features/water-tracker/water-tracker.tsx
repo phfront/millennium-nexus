@@ -5,7 +5,7 @@ import { Skeleton, useToast } from '@phfront/millennium-ui';
 import { useWaterTracker } from '@/hooks/health/use-water-tracker';
 import { formatMl } from '@/lib/health/nutrition';
 import { HydrationMorphingWaves } from './hydration-morphing-waves';
-import { WidgetSectionHeader } from '@/components/widgets/WidgetSectionHeader';
+import { SectionHeader } from '@/components/health/ui/SectionHeader';
 
 const QUICK_ADD_OPTIONS = [100, 500, 1000] as const;
 
@@ -96,7 +96,7 @@ export function WaterTracker({ targetMl = 2500, cardMinHeightClass, hasBackgroun
       ) : null}
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-2 p-3">
-        <WidgetSectionHeader
+        <SectionHeader
           variant="sky"
           icon={<Droplets className="h-3.5 w-3.5" aria-hidden />}
           title="Hidratação"

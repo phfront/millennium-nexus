@@ -1,13 +1,17 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { searchTextMatches } from '@/lib/string-utils';
 import { useUserStore } from '@/store/user-store';
 import type { Food } from '@/types/nutrition';
 
+const FOODS_CATALOG_LIMIT = 1000;
+const FOODS_BROWSE_LIMIT = 100;
+
 export function useFoods(searchTerm?: string) {
   const user = useUserStore((s) => s.user);
-  const [foods, setFoods] = useState<Food[]>([]);
+  const [allFoods, setAllFoods] = useState<Food[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchFoods = useCallback(async () => {
@@ -15,25 +19,26 @@ export function useFoods(searchTerm?: string) {
     setIsLoading(true);
     const supabase = createClient();
 
-    let query = supabase
+    const { data } = await supabase
       .from('foods')
       .select('*')
       .or(`user_id.is.null,user_id.eq.${user.id}`)
       .order('name', { ascending: true })
-      .limit(100);
+      .limit(FOODS_CATALOG_LIMIT);
 
-    if (searchTerm && searchTerm.trim().length > 0) {
-      query = query.ilike('name', `%${searchTerm.trim()}%`);
-    }
-
-    const { data } = await query;
-    setFoods((data ?? []) as Food[]);
+    setAllFoods((data ?? []) as Food[]);
     setIsLoading(false);
-  }, [user, searchTerm]);
+  }, [user]);
 
   useEffect(() => {
     fetchFoods();
   }, [fetchFoods]);
+
+  const foods = useMemo(() => {
+    const term = searchTerm?.trim();
+    if (!term) return allFoods.slice(0, FOODS_BROWSE_LIMIT);
+    return allFoods.filter((food) => searchTextMatches(food.name, term));
+  }, [allFoods, searchTerm]);
 
   async function createFood(
     values: Pick<Food, 'name' | 'kcal_per_100g' | 'protein_per_100g' | 'carbs_per_100g' | 'fat_per_100g' | 'serving_unit'>,
@@ -54,7 +59,7 @@ export function useFoods(searchTerm?: string) {
       throw new Error(error.message);
     }
     const newFood = data as Food;
-    setFoods((prev) => [...prev, newFood].sort((a, b) => a.name.localeCompare(b.name)));
+    setAllFoods((prev) => [...prev, newFood].sort((a, b) => a.name.localeCompare(b.name)));
     return newFood;
   }
 
@@ -71,7 +76,7 @@ export function useFoods(searchTerm?: string) {
       .single();
     if (error) throw new Error(error.message);
     const updated = data as Food;
-    setFoods((prev) => prev.map((f) => (f.id === id ? updated : f)));
+    setAllFoods((prev) => prev.map((f) => (f.id === id ? updated : f)));
     return updated;
   }
 
@@ -79,7 +84,7 @@ export function useFoods(searchTerm?: string) {
     const supabase = createClient();
     const { error } = await supabase.from('foods').delete().eq('id', id);
     if (error) throw new Error(error.message);
-    setFoods((prev) => prev.filter((f) => f.id !== id));
+    setAllFoods((prev) => prev.filter((f) => f.id !== id));
   }
 
   return { foods, isLoading, refetch: fetchFoods, createFood, updateFood, deleteFood };

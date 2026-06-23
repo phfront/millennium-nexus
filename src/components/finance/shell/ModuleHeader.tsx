@@ -24,8 +24,8 @@ export function ModuleHeader() {
   const pageLabel = ROUTE_LABELS[pathname] ?? 'Finance';
 
   return (
-    <header className="md:hidden flex items-center gap-1 px-3 h-14 pt-[env(safe-area-inset-top,0px)] bg-surface-2 border-b border-border shrink-0">
-      <SidebarMenuButton controls="finance-module-sidebar" />
+    <header className="relative z-40 md:hidden flex items-center gap-1 px-3 h-14 pt-[env(safe-area-inset-top,0px)] bg-surface-2 border-b border-border shrink-0">
+      <SidebarMenuButton controls="app-mobile-sidebar" />
       <h1 className="flex-1 min-w-0 text-sm font-semibold text-text-primary text-center truncate px-1">
         {pageLabel}
       </h1>
@@ -42,7 +42,7 @@ export function ModuleHeader() {
       <a
         href="/profile"
         aria-label="Abrir perfil no portal"
-        className="cursor-pointer shrink-0 rounded-full p-0.5 hover:ring-2 hover:ring-brand-primary/30 transition-shadow"
+        className="relative z-10 cursor-pointer shrink-0 rounded-full p-0.5 hover:ring-2 hover:ring-brand-primary/30 transition-shadow touch-manipulation"
       >
         <Avatar src={profile?.avatar_url} name={profile?.full_name ?? undefined} size="sm" />
       </a>

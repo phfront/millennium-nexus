@@ -1,5 +1,8 @@
+import type { MealDiarySourceConfig } from '@/types/meal-diary';
+
 export type TrackerType = 'counter' | 'slider' | 'checklist' | 'boolean';
-export type ScoringMode = 'completion' | 'per_unit';
+export type TrackerSourceKey = 'water_consumed' | 'calories_burned' | 'meal_diary';
+export type ScoringMode = 'completion' | 'per_unit' | 'planned_items';
 export type NotificationType = 'interval' | 'fixed_time' | 'reminder';
 export type TrackerPeriodKind = 'daily' | 'weekly' | 'monthly' | 'custom';
 export type TrackerPeriodAggregation = 'aggregate' | 'single';
@@ -14,6 +17,10 @@ export type Tracker = {
   user_id: string;
   label: string;
   type: TrackerType;
+  /** Null for generic goals; otherwise progress is derived from another module. */
+  source_key: TrackerSourceKey | null;
+  /** JSON config for specific trackers (e.g. meal diary plan). */
+  source_config: MealDiarySourceConfig | Record<string, unknown> | null;
   goal_value: number | null;
   unit: string | null;
   checklist_items: ChecklistItem[] | null;
@@ -23,6 +30,7 @@ export type Tracker = {
   scoring_mode: ScoringMode | null;
   points_value: number;
   points_on_miss: number | null;
+  weekly_bonus_points: number;
   /** Dias da semana em que a meta deve aparecer (0=Dom … 6=Sáb). null = todos os dias. */
   recurrence_days: number[] | null;
   /** Data de início (ISO 'YYYY-MM-DD'). null = contar a partir do dia de criação da meta. */

@@ -10,7 +10,7 @@ interface DailyProgressHeaderProps {
   pointsEarned: number;
   pointsMax: number;
   /**
-   * Quando true (ex.: widget na home), ocupa toda a altura do slot: coluna à direita
+   * Quando true, ocupa toda a altura disponível: coluna à direita
    * reparte espaço (texto + streak), anel maior e sem cartão interior duplicado.
    */
   fillContainer?: boolean;

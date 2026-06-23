@@ -30,6 +30,9 @@ export function isTrackerScheduledForDate(
   if (dateStr < start) return false;
   if (tracker.end_date && dateStr > tracker.end_date) return false;
 
+  // Calorias: card sempre visível para registro; recurrence_days só define a meta semanal.
+  if (tracker.source_key === 'calories_burned') return true;
+
   if (tracker.recurrence_days && tracker.recurrence_days.length > 0) {
     // Parseamos a data como local para evitar desvios de timezone
     const [year, month, day] = dateStr.split('-').map(Number);

@@ -34,7 +34,7 @@ function normalizeUseDietHistoryArg(
 }
 
 /**
- * Persistência de diet_logs partilhada entre componentes (ex.: checklist + widget de resumo).
+ * Persistência de diet_logs partilhada entre componentes.
  * Aceita `{ from, to }` legado como atalho de `dateRange`.
  */
 export function useDietHistory(arg?: UseDietHistoryOptions | { from: string; to: string }) {

@@ -12,6 +12,7 @@ import {
   HomeIcon,
   Bell,
   Flame,
+  Download,
 } from 'lucide-react';
 
 const WEIGHT_CHILDREN = [
@@ -25,7 +26,8 @@ function isWeightSectionPath(pathname: string) {
   return (
     pathname.startsWith('/health') &&
     !pathname.startsWith('/health/nutrition') &&
-    !pathname.startsWith('/health/calorias')
+    !pathname.startsWith('/health/calorias') &&
+    !pathname.startsWith('/health/export')
   );
 }
 
@@ -75,6 +77,7 @@ function SidebarBody({ onClose }: { onClose: () => void }) {
 
       {/* Nav body */}
       <div className="flex-1 overflow-y-auto px-2 py-3 flex flex-col gap-1">
+        <div className="hidden">
         {/* Nutrição — submenu */}
         <button
           type="button"
@@ -162,6 +165,7 @@ function SidebarBody({ onClose }: { onClose: () => void }) {
         </div>
 
         <Divider className="my-2" />
+        </div>
 
         {/* Controle de peso — submenu */}
         <button
@@ -208,7 +212,14 @@ function SidebarBody({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* Footer */}
-      <div className="shrink-0 border-t border-border px-2 py-3">
+      <div className="shrink-0 border-t border-border px-2 py-3 flex flex-col gap-1">
+        <NavItem
+          href="/health/export"
+          icon={<Download size={18} />}
+          label="Exportar backup"
+          isActive={pathname === '/health/export'}
+          onClick={onClose}
+        />
         <NavItem href="/" icon={<Home size={18} />} label="Voltar ao Portal" isActive={false} onClick={onClose} />
       </div>
     </>

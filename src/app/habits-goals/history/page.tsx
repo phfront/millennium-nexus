@@ -10,7 +10,7 @@ import { TrackerCard } from '@/components/habits-goals/features/tracker-card/tra
 import { isTrackerScheduledForDate } from '@/lib/habits-goals/scheduling';
 import { getLocalDateStr } from '@/lib/habits-goals/timezone';
 import { maxPossiblePointsForTracker, pointsPercentOfMax } from '@/lib/habits-goals/scoring';
-import { getPeriodWindowForDate, sumNumericInWindow } from '@/lib/habits-goals/period';
+import { getCalendarWeekWindow, getPeriodWindowForDate, mealDiaryWeekLogsForTracker, sumNumericInWindow } from '@/lib/habits-goals/period';
 import { NonDailyPeriodHistory } from '@/components/habits-goals/features/non-daily-period-history/non-daily-period-history';
 import type { Log, Tracker } from '@/types/habits-goals';
 
@@ -102,17 +102,22 @@ export default function HistoryPage() {
               <h3 className="text-sm font-semibold text-text-secondary">Metas diárias</h3>
               {dailyForView.map((tracker) => {
                 const w = getPeriodWindowForDate(tracker, viewDate);
+                const weekWindow = getCalendarWeekWindow(viewDate);
                 const periodNumericSum =
-                  (tracker.period_aggregation ?? 'single') === 'aggregate' &&
-                  (tracker.type === 'counter' || tracker.type === 'slider')
-                    ? sumNumericInWindow(tracker, logs, w)
-                    : null;
+                  tracker.source_key === 'calories_burned'
+                    ? sumNumericInWindow(tracker, logs, weekWindow)
+                    : (tracker.period_aggregation ?? 'single') === 'aggregate' &&
+                        (tracker.type === 'counter' || tracker.type === 'slider')
+                      ? sumNumericInWindow(tracker, logs, w)
+                      : null;
+                const mealDiaryWeekLogs = mealDiaryWeekLogsForTracker(tracker, logs, viewDate);
                 return (
                   <TrackerCard
                     key={tracker.id}
                     tracker={tracker}
                     log={getLogForTracker(tracker)}
                     periodNumericSum={periodNumericSum}
+                    mealDiaryWeekLogs={mealDiaryWeekLogs}
                     readonly={isPast}
                     viewDate={viewDate}
                     onLogChange={handleLogChange}
