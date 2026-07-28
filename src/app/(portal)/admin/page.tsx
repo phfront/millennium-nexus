@@ -43,7 +43,7 @@ export default async function AdminPage() {
       <PageHeader
         className="mb-0"
         title="Administração"
-        subtitle="Controla o acesso de cada utilizador aos módulos do portal."
+        subtitle="Controla o acesso de cada usuário aos módulos do portal."
       />
 
       <section>

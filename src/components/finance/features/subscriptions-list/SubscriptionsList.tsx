@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Plus, Pencil, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { Modal, Input, Button, Skeleton, useToast } from '@phfront/millennium-ui';
 import { useSubscriptions } from '@/hooks/finance/use-subscriptions';
-import { formatBRL } from '@/lib/finance/format';
+import { useMoneyFormat } from '@/hooks/finance/use-money-format';
 import type { Subscription } from '@/types/finance';
 
 function SubscriptionCard({
@@ -19,6 +19,7 @@ function SubscriptionCard({
   onToggle: (id: string) => void;
 }) {
   const monthly = sub.billing_cycle === 'yearly' ? sub.amount / 12 : sub.amount;
+  const money = useMoneyFormat();
 
   return (
     <div className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-colors
@@ -27,9 +28,9 @@ function SubscriptionCard({
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-text-primary truncate">{sub.name}</p>
         <p className="text-xs text-text-muted">
-          {formatBRL(sub.amount)}{sub.billing_cycle === 'yearly' ? '/ano' : '/mês'}
+          {money.format(sub.amount)}{sub.billing_cycle === 'yearly' ? '/ano' : '/mês'}
           {sub.billing_cycle === 'yearly' && (
-            <span className="ml-1 text-text-muted">({formatBRL(monthly)}/mês)</span>
+            <span className="ml-1 text-text-muted">({money.format(monthly)}/mês)</span>
           )}
           {sub.renewal_day && <span className="ml-1">· dia {sub.renewal_day}</span>}
         </p>
@@ -65,6 +66,7 @@ const EMPTY_FORM: Omit<Subscription, 'id' | 'user_id' | 'created_at'> = {
 export function SubscriptionsList() {
   const { active, inactive, monthlyTotal, isLoading, addSubscription, updateSubscription, deleteSubscription } = useSubscriptions();
   const { toast } = useToast();
+  const money = useMoneyFormat();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Subscription | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -129,7 +131,7 @@ export function SubscriptionsList() {
       <div className="flex items-center justify-between bg-surface-2 border border-border rounded-xl p-4">
         <div>
           <p className="text-xs text-text-muted mb-0.5">Total mensal ativo</p>
-          <p className="text-2xl font-bold text-text-primary">{formatBRL(monthlyTotal)}<span className="text-sm font-normal text-text-muted">/mês</span></p>
+          <p className="text-2xl font-bold text-text-primary">{money.format(monthlyTotal)}<span className="text-sm font-normal text-text-muted">/mês</span></p>
         </div>
         <Button onClick={openAdd} leftIcon={<Plus size={14} />}>Nova Assinatura</Button>
       </div>

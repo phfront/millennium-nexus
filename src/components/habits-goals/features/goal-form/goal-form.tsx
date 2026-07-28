@@ -1190,9 +1190,9 @@ export function GoalForm({
               text="Como contabilizar"
               tooltip={
                 <>
-                  <strong>Agregada:</strong> vários registos no período (ex.: km por dia; soma na semana).
+                  <strong>Agregada:</strong> vários registros no período (ex.: km por dia; soma na semana).
                   <br />
-                  <strong>Única:</strong> um registo por período (ex.: revisão semanal feita ou não).
+                  <strong>Única:</strong> um registro por período (ex.: revisão semanal feita ou não).
                 </>
               }
             />
@@ -1200,7 +1200,7 @@ export function GoalForm({
               {(
                 [
                   { value: 'aggregate' as const, label: 'Agregada (soma)' },
-                  { value: 'single' as const, label: 'Única (1 registo)' },
+                  { value: 'single' as const, label: 'Única (1 registro)' },
                 ] as const
               ).map((opt) => (
                 <button

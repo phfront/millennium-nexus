@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   TrendingUp,
@@ -35,25 +35,35 @@ import {
   toMonthDate,
 } from '@/lib/finance/finance';
 import { MonthPaymentsModal } from '@/components/finance/features/monthly-dashboard/MonthPaymentsModal';
+import {
+  MonthBreakdownModal,
+  type BreakdownSection,
+} from '@/components/finance/features/monthly-dashboard/MonthBreakdownModal';
 import { useFinanceSpreadsheetSettings } from '@/contexts/FinanceSpreadsheetSettingsContext';
-import { formatBRL, formatMonthLabel } from '@/lib/finance/format';
+import { formatMonthLabel } from '@/lib/finance/format';
+import { useMoneyFormat } from '@/hooks/finance/use-money-format';
+import { useIncome } from '@/hooks/finance/use-income';
+import { useCurrencyConversion } from '@/hooks/finance/use-currency-conversion';
+import { incomeEntryCurrency } from '@/types/finance';
 import { createClient } from '@/lib/supabase/client';
 import { useUserStore } from '@/store/user-store';
+import { useInitialFinanceMonth } from '@/hooks/finance/use-initial-finance-month';
 
 export function MonthlyDashboard() {
   const user = useUserStore((s) => s.user);
+  const money = useMoneyFormat();
   const { toast } = useToast();
-  const [month, setMonth] = useState(() => toMonthDate(new Date()));
+  const { maxPlanningMonth } = useFinanceSpreadsheetSettings();
+  const [month, setMonth] = useInitialFinanceMonth(maxPlanningMonth);
   const [paymentsModalOpen, setPaymentsModalOpen] = useState(false);
+  const [breakdownKind, setBreakdownKind] = useState<'income' | 'expense' | null>(null);
   const [completeModalOpen, setCompleteModalOpen] = useState(false);
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
   const [currentMonthConcluded, setCurrentMonthConcluded] = useState(false);
   const [loadingConcluded, setLoadingConcluded] = useState(false);
   const [concluding, setConcluding] = useState(false);
   const [reopening, setReopening] = useState(false);
-  const initialMonthResolvedRef = useRef(false);
 
-  const { maxPlanningMonth } = useFinanceSpreadsheetSettings();
   const {
     summaries,
     isLoading: loadingSummary,
@@ -65,40 +75,11 @@ export function MonthlyDashboard() {
     if (month > maxPlanningMonth) setMonth(maxPlanningMonth);
   }, [month, maxPlanningMonth]);
 
-  /** Se o mês corrente do calendário já está concluído, abrir o dashboard no mês seguinte. */
-  useEffect(() => {
-    if (!user?.id || initialMonthResolvedRef.current) return;
-
-    const calendarMonth = toMonthDate(new Date());
-    let cancelled = false;
-
-    void (async () => {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from('finance_month_snapshots')
-        .select('month')
-        .eq('user_id', user.id)
-        .eq('month', calendarMonth)
-        .maybeSingle();
-
-      if (cancelled) return;
-      initialMonthResolvedRef.current = true;
-
-      if (data) {
-        let next = getNextMonth(calendarMonth);
-        if (next > maxPlanningMonth) next = maxPlanningMonth;
-        setMonth(next);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id, maxPlanningMonth]);
   const {
     entries,
     isLoading: loadingExpenses,
     activeItems,
+    items: expenseItems,
     categories,
     getEntry,
     getEffectiveExpenseAmount,
@@ -111,6 +92,12 @@ export function MonthlyDashboard() {
     upsertExpense: upsertOneTimeExpense,
     togglePaid: toggleOneTimePaid,
   } = useOneTime();
+  const {
+    sources: incomeSources,
+    entries: incomeEntries,
+    isLoading: loadingIncome,
+  } = useIncome();
+  const { convert } = useCurrencyConversion();
   const { monthlyTotal: subsTotal, isLoading: loadingSubs } = useSubscriptions();
   const { getPendingTotal, isLoading: loadingRec } = useReceivables();
 
@@ -119,7 +106,95 @@ export function MonthlyDashboard() {
   const oneTimeForMonth = getForMonth(month);
   const progress = paymentProgress(monthEntries, oneTimeForMonth);
   const loadingPayments = loadingExpenses || loadingOneTime;
-  const isLoading = loadingSummary || loadingExpenses;
+  const isLoading = loadingSummary || loadingExpenses || loadingIncome;
+
+  const totalIncome = summary?.total_income ?? 0;
+  const totalExpenses = (summary?.total_expenses ?? 0) + (summary?.total_one_time ?? 0);
+
+  /**
+   * Detalhe dos cartões. Espelha exatamente o que a view soma — só lançamentos
+   * que existem na BD, sem preencher com o valor padrão da fonte/item — para o
+   * modal nunca divergir do número do cartão.
+   */
+  function buildIncomeSections(): BreakdownSection[] {
+    const rows = incomeEntries
+      .filter((e) => e.month === month)
+      .map((e) => {
+        const source = incomeSources.find((s) => s.id === e.source_id);
+        const raw = Number(e.amount ?? 0);
+        const entryCurrency = source
+          ? incomeEntryCurrency(source, month, money.currency)
+          : money.currency;
+        const isForeign = entryCurrency !== money.currency;
+        return {
+          key: e.id,
+          label: source?.name ?? 'Fonte removida',
+          amount: convert(raw, entryCurrency),
+          nativeAmount: isForeign ? raw : undefined,
+          nativeCurrency: isForeign ? entryCurrency : undefined,
+        };
+      })
+      .sort((a, b) => b.amount - a.amount);
+
+    const oneTime = oneTimeForMonth
+      .filter((e) => e.flow === 'income')
+      .map((e) => ({
+        key: e.id,
+        label: e.name,
+        amount: Number(e.amount ?? 0),
+        isPaid: e.is_paid,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    return [
+      { key: 'sources', label: 'Fontes de renda', rows },
+      { key: 'one-time', label: 'Receitas pontuais', rows: oneTime },
+    ];
+  }
+
+  function buildExpenseSections(): BreakdownSection[] {
+    const byCategory = new Map<string, BreakdownSection>();
+
+    for (const entry of monthEntries) {
+      const item = expenseItems.find((i) => i.id === entry.item_id);
+      const category = item?.category_id
+        ? categories.find((c) => c.id === item.category_id)
+        : undefined;
+      const key = category?.id ?? 'sem-categoria';
+
+      if (!byCategory.has(key)) {
+        byCategory.set(key, {
+          key,
+          label: category?.name ?? 'Sem categoria',
+          color: category?.color ?? null,
+          rows: [],
+        });
+      }
+      byCategory.get(key)!.rows.push({
+        key: entry.id,
+        label: item?.name ?? 'Item removido',
+        amount: Number(entry.amount ?? 0),
+        isPaid: entry.is_paid,
+      });
+    }
+
+    const sections = [...byCategory.values()].map((s) => ({
+      ...s,
+      rows: [...s.rows].sort((a, b) => b.amount - a.amount),
+    }));
+
+    const oneTime = oneTimeForMonth
+      .filter((e) => e.flow === 'expense')
+      .map((e) => ({
+        key: e.id,
+        label: e.name,
+        amount: Number(e.amount ?? 0),
+        isPaid: e.is_paid,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    return [...sections, { key: 'one-time', label: 'Despesas pontuais', rows: oneTime }];
+  }
 
   const surplusTone: StatCardValueTone =
     summary && summary.surplus > 0
@@ -197,7 +272,7 @@ export function MonthlyDashboard() {
       }
       setReopenModalOpen(false);
       setCurrentMonthConcluded(false);
-      toast.success('Mês reaberto. Podes voltar a editar receitas e despesas.');
+      toast.success('Mês reaberto. Você pode voltar a editar receitas e despesas.');
     } finally {
       setReopening(false);
     }
@@ -235,7 +310,7 @@ export function MonthlyDashboard() {
               Mês concluído
             </p>
             <p className="text-xs text-text-muted mt-1">
-              Os totais e lançamentos deste mês estão arquivados. Vê o detalhe em{' '}
+              Os totais e lançamentos deste mês estão arquivados. Veja o detalhe em{' '}
               <Link href="/finance/history" className="underline hover:text-text-primary">
                 Histórico
               </Link>
@@ -265,16 +340,16 @@ export function MonthlyDashboard() {
           <div className="flex flex-col gap-3 text-sm text-text-secondary">
             <p>
               Vamos arquivar os totais e todos os lançamentos (receitas, despesas fixas e pontuais)
-              com os nomes e valores atuais. Depois podes reabrir o mês se precisares corrigir algo.
+              com os nomes e valores atuais. Depois você pode reabrir o mês se precisar corrigir algo.
             </p>
             {pendingPayments > 0 && (
               <div
                 className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-amber-800 dark:text-amber-200 text-xs leading-relaxed"
                 role="status"
               >
-                <strong className="font-semibold">Atenção:</strong> ainda tens{' '}
+                <strong className="font-semibold">Atenção:</strong> você ainda tem{' '}
                 <strong>{pendingPayments}</strong> de <strong>{progress.total}</strong> despesas com
-                valor neste mês por marcar como pagas. Podes concluir na mesma; o arquivo reflecte o
+                valor neste mês por marcar como pagas. Você pode concluir mesmo assim; o arquivo reflete o
                 estado atual (pago ou pendente).
               </div>
             )}
@@ -308,7 +383,7 @@ export function MonthlyDashboard() {
       >
         <>
           <p className="text-sm text-text-secondary">
-            Isto remove o arquivo deste mês na tua conta. Voltas a poder editar receitas e despesas na
+            Isso remove o arquivo deste mês na sua conta. Você volta a poder editar receitas e despesas na
             planilha; a linha deste mês deixa de aparecer no histórico até concluíres de novo.
           </p>
           <div className="flex justify-end gap-2 pt-5 mt-4 border-t border-border">
@@ -332,27 +407,60 @@ export function MonthlyDashboard() {
         </>
       </Modal>
 
+      {breakdownKind && (
+        <MonthBreakdownModal
+          isOpen
+          onClose={() => setBreakdownKind(null)}
+          kind={breakdownKind}
+          month={month}
+          sections={breakdownKind === 'income' ? buildIncomeSections() : buildExpenseSections()}
+          total={breakdownKind === 'income' ? totalIncome : totalExpenses}
+        />
+      )}
+
       {/* Cards de métricas */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard
           label="Receitas"
-          value={formatBRL(summary?.total_income ?? 0)}
+          value={money.format(totalIncome)}
           isLoading={isLoading}
           valueTone="positive"
           valueSize="md"
           icon={<TrendingUp size={16} />}
+          role="button"
+          tabIndex={0}
+          aria-label={`Ver detalhe das receitas de ${formatMonthLabel(month)}`}
+          className="cursor-pointer transition-colors hover:border-brand-primary/60 hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-primary"
+          onClick={() => setBreakdownKind('income')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setBreakdownKind('income');
+            }
+          }}
         />
         <StatCard
           label="Despesas"
-          value={formatBRL((summary?.total_expenses ?? 0) + (summary?.total_one_time ?? 0))}
+          value={money.format(totalExpenses)}
           isLoading={isLoading}
           valueTone="negative"
           valueSize="md"
           icon={<CreditCard size={16} />}
+          role="button"
+          tabIndex={0}
+          aria-label={`Ver detalhe das despesas de ${formatMonthLabel(month)}`}
+          className="cursor-pointer transition-colors hover:border-brand-primary/60 hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-primary"
+          onClick={() => setBreakdownKind('expense')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setBreakdownKind('expense');
+            }
+          }}
         />
         <StatCard
           label="Sobra"
-          value={formatBRL(summary?.surplus ?? 0)}
+          value={money.format(summary?.surplus ?? 0)}
           isLoading={isLoading}
           valueTone={surplusTone}
           valueSize="md"
@@ -360,7 +468,7 @@ export function MonthlyDashboard() {
         />
         <StatCard
           label="Acumulado"
-          value={formatBRL(displayedAccumulated)}
+          value={money.format(displayedAccumulated)}
           isLoading={isLoading}
           valueTone={accumulatedTone}
           valueSize="md"
@@ -454,7 +562,7 @@ export function MonthlyDashboard() {
               <Skeleton className="h-5 w-20" />
             ) : (
               <p className="text-base font-semibold text-text-primary">
-                {formatBRL(subsTotal)}
+                {money.format(subsTotal)}
                 <span className="text-xs text-text-muted font-normal">/mês</span>
               </p>
             )}
@@ -473,7 +581,7 @@ export function MonthlyDashboard() {
             {loadingRec ? (
               <Skeleton className="h-5 w-20" />
             ) : (
-              <p className="text-base font-semibold text-text-primary">{formatBRL(getPendingTotal())}</p>
+              <p className="text-base font-semibold text-text-primary">{money.format(getPendingTotal())}</p>
             )}
           </div>
           <div className="flex items-center gap-1 text-text-muted">

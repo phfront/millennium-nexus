@@ -45,8 +45,8 @@ export function SpreadsheetSettingsForm() {
           Meses à frente nas planilhas
         </label>
         <p className="text-xs text-text-muted mb-3">
-          Quantos meses depois do mês atual queres ver colunas para planear receitas, despesas e pontuais.
-          Os meses em que já tens dados continuam sempre visíveis. O dashboard também permite navegar até
+          Quantos meses depois do mês atual você quer ver colunas para planejar receitas, despesas e pontuais.
+          Os meses em que você já tem dados continuam sempre visíveis. O dashboard também permite navegar até
           esse último mês.
         </p>
         <Input
@@ -61,7 +61,7 @@ export function SpreadsheetSettingsForm() {
         />
       </div>
       <Button type="submit" disabled={saving || isLoading}>
-        {saving ? 'A guardar…' : 'Guardar'}
+        {saving ? 'Salvando…' : 'Salvar'}
       </Button>
     </form>
   );

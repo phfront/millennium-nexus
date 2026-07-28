@@ -4,10 +4,32 @@ export type IncomeSource = {
   name: string;
   is_active: boolean;
   sort_order: number;
-  /** Valor sugerido por mês; preenche células sem entrada (podes alterar mês a mês na planilha). */
+  /** Valor sugerido por mês; preenche células sem entrada (você pode alterar mês a mês na planilha). */
   default_monthly_amount: number;
+  /**
+   * Moeda ISO-4217 em que os valores desta fonte são lançados.
+   * `null` = moeda padrão (a de exibição); qualquer outra é convertida pela cotação atual.
+   */
+  currency: string | null;
+  /**
+   * Primeiro mês ('YYYY-MM-DD', dia 01) em que `currency` se aplica; meses
+   * anteriores são lidos na moeda padrão, sem conversão. Evita que marcar uma
+   * fonte como estrangeira reinterprete todo o histórico dela.
+   */
+  currency_since: string | null;
   created_at: string;
 };
+
+/** Moeda em que um lançamento desta fonte deve ser lido, dado o mês. */
+export function incomeEntryCurrency(
+  source: Pick<IncomeSource, 'currency' | 'currency_since'>,
+  month: string,
+  displayCurrency: string,
+): string {
+  if (!source.currency) return displayCurrency;
+  if (source.currency_since && month < source.currency_since) return displayCurrency;
+  return source.currency;
+}
 
 export type IncomeEntry = {
   id: string;
@@ -27,6 +49,44 @@ export type ExpenseCategory = {
   created_at: string;
 };
 
+/**
+ * Balde do orçamento (regra 60/30/10).
+ * `deduction` = imposto ou custo do negócio: continua lançado como despesa
+ * na planilha, mas no orçamento abate da base em vez de ocupar um balde.
+ * `null` = ainda não classificada.
+ */
+export type BudgetClass = 'essential' | 'optional' | 'investment' | 'deduction';
+
+export const BUDGET_CLASSES: BudgetClass[] = [
+  'essential',
+  'optional',
+  'investment',
+  'deduction',
+];
+
+export const BUDGET_CLASS_LABEL: Record<BudgetClass, string> = {
+  essential: 'Obrigatória',
+  optional: 'Opcional',
+  investment: 'Investimento',
+  deduction: 'Imposto / custo do negócio',
+};
+
+/** Rótulo curto para chips na planilha. */
+export const BUDGET_CLASS_SHORT: Record<BudgetClass, string> = {
+  essential: 'Obrig.',
+  optional: 'Opc.',
+  investment: 'Invest.',
+  deduction: 'Imposto',
+};
+
+export function isBudgetClass(raw: unknown): raw is BudgetClass {
+  return typeof raw === 'string' && (BUDGET_CLASSES as string[]).includes(raw);
+}
+
+export function normalizeBudgetClass(raw: unknown): BudgetClass | null {
+  return isBudgetClass(raw) ? raw : null;
+}
+
 export type ExpenseItem = {
   id: string;
   user_id: string;
@@ -36,8 +96,21 @@ export type ExpenseItem = {
   default_amount: number | null;
   /** Se true, preenche meses visíveis sem linha com `default_amount` (quando > 0). */
   is_recurring: boolean;
+  /** Balde do orçamento; null = a classificar. */
+  budget_class: BudgetClass | null;
   /** Dia do mês do vencimento (1–31); null = sem lembrete por vencimento. */
   due_day: number | null;
+  /**
+   * Esta linha é a fatura de um cartão: o seu valor mensal é o total da fatura,
+   * e outras linhas podem declarar-se pagas dentro dela.
+   */
+  is_card: boolean;
+  /**
+   * Item-cartão dentro do qual esta despesa é paga. Se preenchido, os
+   * lançamentos deste item NÃO somam ao total do mês: decompõem a fatura.
+   * `null` = pago fora de cartão (débito, pix, dinheiro) e soma normalmente.
+   */
+  paid_with_item_id: string | null;
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -65,6 +138,8 @@ export type OneTimeEntry = {
   amount: number;
   /** Despesa ou receita pontual. */
   flow: 'expense' | 'income';
+  /** Balde do orçamento; só se aplica a `flow = 'expense'`. */
+  budget_class: BudgetClass | null;
   /** Data de vencimento opcional (YYYY-MM-DD) para lembretes push. */
   due_date: string | null;
   is_paid: boolean;
@@ -75,6 +150,23 @@ export type OneTimeEntry = {
 
 /** @deprecated Use OneTimeEntry */
 export type OneTimeExpense = OneTimeEntry;
+
+/**
+ * Fatura × detalhado × restante de um item-cartão num mês. O restante nunca é
+ * gravado — é o valor da linha do cartão menos as linhas pagas dentro dela.
+ */
+export type CardBreakdown = {
+  /** Valor da linha do cartão no mês: o total da fatura. */
+  invoiceAmount: number;
+  /** Soma das linhas que declararam ser pagas dentro deste cartão. */
+  itemizedAmount: number;
+  itemizedCount: number;
+  /**
+   * `invoiceAmount - itemizedAmount`. Negativo = você detalhou mais do que a
+   * fatura, que é estado de erro e a UI avisa.
+   */
+  residualAmount: number;
+};
 
 export type Subscription = {
   id: string;
@@ -122,10 +214,50 @@ export type FinanceUserSettings = {
   expense_due_reminder_days_before: number[];
   /** Hora local HH:MM (fuso do perfil no portal). */
   expense_due_reminder_time: string;
+  /** Moeda ISO-4217 de exibição. Não converte o que já está guardado — só formata. */
+  display_currency: string;
+  /** Percentuais-alvo do orçamento; padrão 60/30/10. A soma não passa de 100. */
+  budget_pct_essential: number;
+  budget_pct_optional: number;
+  budget_pct_investment: number;
+  /** Receitas pontuais entram na base de cálculo do orçamento. */
+  budget_include_one_time_income: boolean;
   updated_at: string;
 };
 
-/** Resumo congelado no fecho do mês (consulta futura; não reflete edições posteriores nas entradas). */
+/** Linha de `finance_budget_monthly` — receitas já convertidas na BD. */
+export type BudgetMonthRow = {
+  user_id: string;
+  month: string;
+  income_recurring: number;
+  income_one_time: number;
+  /** Impostos e custo do negócio: abatem da base. */
+  deductions: number;
+  essential: number;
+  optional: number;
+  investment: number;
+  unclassified: number;
+  unclassified_count: number;
+  pct_essential: number;
+  pct_optional: number;
+  pct_investment: number;
+  include_one_time_income: boolean;
+  /**
+   * `true` = o mês já foi arquivado e a base vem congelada do arquivo, não
+   * recalculada com a cotação de hoje. É o que faz o Orçamento e o Histórico
+   * contarem a mesma história sobre um mês fechado.
+   */
+  base_is_frozen: boolean;
+};
+
+/** Cotação global: quantas unidades de `currency` valem 1 USD. */
+export type FinanceExchangeRate = {
+  currency: string;
+  per_usd: number;
+  fetched_at: string;
+};
+
+/** Resumo congelado no fechamento do mês (consulta futura; não reflete edições posteriores nas entradas). */
 export type FinanceMonthSnapshot = {
   user_id: string;
   month: string;
@@ -139,7 +271,7 @@ export type FinanceMonthSnapshot = {
   breaks_accumulated_carryover: boolean;
 };
 
-/** Lançamento individual congelado no fecho do mês (nome/valor gravados no momento do arquivo). */
+/** Lançamento individual congelado no fechamento do mês (nome/valor gravados no momento do arquivo). */
 export type FinanceMonthSnapshotEntry = {
   id: string;
   user_id: string;

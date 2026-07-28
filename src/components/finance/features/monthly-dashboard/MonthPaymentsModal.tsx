@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { Modal, Button, useToast, InlineAmountCell } from '@phfront/millennium-ui';
-import { formatBRL, formatMonth, parseBRLInput } from '@/lib/finance/format';
+import { formatMonth } from '@/lib/finance/format';
+import { useMoneyFormat } from '@/hooks/finance/use-money-format';
 import { normalizeExpenseMonthKey } from '@/lib/finance/finance';
 import type { ExpenseCategory, ExpenseItem, OneTimeEntry } from '@/types/finance';
 import { ExpensePaidNoteModal } from '@/components/finance/features/expense-paid-note-modal/ExpensePaidNoteModal';
@@ -69,6 +70,7 @@ export function MonthPaymentsModal({
   onDataChanged,
 }: MonthPaymentsModalProps) {
   const { toast } = useToast();
+  const money = useMoneyFormat();
   const monthKey = normalizeExpenseMonthKey(month);
   const [markPaidTarget, setMarkPaidTarget] = useState<MarkPaidTarget | null>(null);
   const [markPaidBusy, setMarkPaidBusy] = useState(false);
@@ -226,8 +228,8 @@ export function MonthPaymentsModal({
                                 <InlineAmountCell
                                   value={amount}
                                   onSave={(v) => handleSave(item.id, v)}
-                                  formatDisplay={formatBRL}
-                                  parseInput={parseBRLInput}
+                                  formatDisplay={money.format}
+                                  parseInput={money.parse}
                                   highlightVariant="success"
                                   highlightActive={isPaid}
                                   className="rounded-md border border-border/45 bg-surface-3/35 px-2 py-1.5 !text-sm leading-normal tabular-nums"
@@ -275,8 +277,8 @@ export function MonthPaymentsModal({
                                       <InlineAmountCell
                                         value={amount}
                                         onSave={(v) => handleSaveOneTime(exp, v)}
-                                        formatDisplay={formatBRL}
-                                        parseInput={parseBRLInput}
+                                        formatDisplay={money.format}
+                                        parseInput={money.parse}
                                         highlightVariant="success"
                                         highlightActive={false}
                                         className="rounded-md border border-border/45 bg-surface-3/35 px-2 py-1.5 !text-sm leading-normal tabular-nums"
@@ -327,8 +329,8 @@ export function MonthPaymentsModal({
                                       <InlineAmountCell
                                         value={amount}
                                         onSave={(v) => handleSaveOneTime(exp, v)}
-                                        formatDisplay={formatBRL}
-                                        parseInput={parseBRLInput}
+                                        formatDisplay={money.format}
+                                        parseInput={money.parse}
                                         highlightVariant="success"
                                         highlightActive={false}
                                         className="rounded-md border border-border/45 bg-surface-3/35 px-2 py-1.5 !text-sm leading-normal tabular-nums"
@@ -398,8 +400,8 @@ export function MonthPaymentsModal({
                                 <InlineAmountCell
                                   value={amount}
                                   onSave={(v) => handleSave(item.id, v)}
-                                  formatDisplay={formatBRL}
-                                  parseInput={parseBRLInput}
+                                  formatDisplay={money.format}
+                                  parseInput={money.parse}
                                   highlightVariant="success"
                                   highlightActive={isPaid}
                                   className="rounded-md border border-border/45 bg-surface-3/35 px-2 py-1.5 !text-sm leading-normal tabular-nums"
@@ -456,8 +458,8 @@ export function MonthPaymentsModal({
                                       <InlineAmountCell
                                         value={amount}
                                         onSave={(v) => handleSaveOneTime(exp, v)}
-                                        formatDisplay={formatBRL}
-                                        parseInput={parseBRLInput}
+                                        formatDisplay={money.format}
+                                        parseInput={money.parse}
                                         highlightVariant="success"
                                         highlightActive
                                         className="rounded-md border border-border/45 bg-surface-3/35 px-2 py-1.5 !text-sm leading-normal tabular-nums"
@@ -511,8 +513,8 @@ export function MonthPaymentsModal({
                                       <InlineAmountCell
                                         value={amount}
                                         onSave={(v) => handleSaveOneTime(exp, v)}
-                                        formatDisplay={formatBRL}
-                                        parseInput={parseBRLInput}
+                                        formatDisplay={money.format}
+                                        parseInput={money.parse}
                                         highlightVariant="success"
                                         highlightActive
                                         className="rounded-md border border-border/45 bg-surface-3/35 px-2 py-1.5 !text-sm leading-normal tabular-nums"

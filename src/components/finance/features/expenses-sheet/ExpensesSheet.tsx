@@ -2,7 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Settings, ChevronDown, ChevronRight, Pencil, Check, Trash2, Columns2 } from 'lucide-react';
+import {
+  Plus,
+  ChevronDown,
+  ChevronRight,
+  Pencil,
+  Check,
+  Trash2,
+  Columns2,
+  CreditCard,
+} from 'lucide-react';
 import {
   Badge,
   Button,
@@ -13,7 +22,10 @@ import {
   useToast,
 } from '@phfront/millennium-ui';
 import { useExpenses } from '@/hooks/finance/use-expenses';
-import { formatBRL, formatMonth, parseBRLInput } from '@/lib/finance/format';
+import { useFinanceMonthSnapshots } from '@/hooks/finance/use-finance-month-snapshots';
+import { formatMonth } from '@/lib/finance/format';
+import { currencySymbol } from '@/lib/finance/currency';
+import { useMoneyFormat } from '@/hooks/finance/use-money-format';
 import {
   buildSpreadsheetMonthList,
   firstDayToMonthInputValue,
@@ -25,9 +37,25 @@ import { cn } from '@/lib/utils';
 import { SpreadsheetColumnFillModal } from '@/components/finance/features/spreadsheet-column-fill-modal/SpreadsheetColumnFillModal';
 import { ExpensePaidNoteModal } from '@/components/finance/features/expense-paid-note-modal/ExpensePaidNoteModal';
 import { CategoryColorPicker } from '@/components/finance/features/expenses-sheet/CategoryColorPicker';
-import type { ExpenseCategory, ExpenseItem } from '@/types/finance';
+import {
+  BUDGET_CLASSES,
+  BUDGET_CLASS_LABEL,
+  BUDGET_CLASS_SHORT,
+  type BudgetClass,
+  type CardBreakdown,
+  type ExpenseCategory,
+  type ExpenseItem,
+} from '@/types/finance';
+import type { MoneyFormat } from '@/hooks/finance/use-money-format';
 
-/** `table-auto` + nowrap: columns grow with label/value; floor fits typical BRL in `text-xs`. */
+/** Cor do chip por balde — `deduction` fica neutro por não ser gasto de vida. */
+const BUDGET_CLASS_BADGE: Record<BudgetClass, 'info' | 'warning' | 'success' | 'muted'> = {
+  essential: 'info',
+  optional: 'warning',
+  investment: 'success',
+  deduction: 'muted',
+};
+
 const SPREADSHEET_DATA_COL = 'min-w-40 whitespace-nowrap px-2';
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -50,6 +78,22 @@ function categoryTint(color: string | null | undefined) {
 
 const UNCATEGORIZED_ID = '__uncategorized__' as const;
 
+/** Categorias colapsadas na planilha, persistidas entre sessões. */
+const COLLAPSED_CATS_STORAGE_KEY = 'nexus:finance:expenses:collapsed-cats';
+
+function readCollapsedCats(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_CATS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((v): v is string => typeof v === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
 type ExpenseDisplayGroup = {
   id: string;
   name: string;
@@ -57,6 +101,46 @@ type ExpenseDisplayGroup = {
   isUncategorized: boolean;
   color: string | null;
 };
+
+/**
+ * O que ainda não tem nome dentro de uma fatura, por baixo do valor dela.
+ * Nada aparece enquanto nada estiver detalhado — só há “a detalhar” quando
+ * existe alguma linha paga dentro do cartão.
+ *
+ * No arquivo do mês a mesma quantia chama-se “restante” (ver a vista
+ * finance_expense_archive_rows): num mês fechado já não há nada a detalhar,
+ * e pedir uma ação sobre o passado seria mentira.
+ */
+function CardResidualHint({
+  breakdown,
+  money,
+}: {
+  breakdown: CardBreakdown;
+  money: MoneyFormat;
+}) {
+  if (breakdown.itemizedCount === 0) return null;
+  const over = breakdown.residualAmount < 0;
+
+  return (
+    <div className="px-2 pb-1 text-right text-[10px] leading-tight tabular-nums">
+      {over ? (
+        <span
+          className="font-semibold text-danger"
+          title="As linhas pagas dentro deste cartão somam mais do que a fatura — ou falta valor na fatura, ou há linha a mais"
+        >
+          ⚠ excede {money.format(Math.abs(breakdown.residualAmount))}
+        </span>
+      ) : (
+        <span
+          className={breakdown.residualAmount > 0 ? 'text-text-secondary' : 'text-success'}
+          title={`Fatura ${money.format(breakdown.invoiceAmount)} · detalhado ${money.format(breakdown.itemizedAmount)} em ${breakdown.itemizedCount} linha(s)`}
+        >
+          a detalhar {money.format(breakdown.residualAmount)}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function currentMonthInputValue(): string {
   const d = new Date();
@@ -86,6 +170,15 @@ function ManageExpenseItemRow({
         {!item.is_active && (
           <Badge variant="muted" size="sm">
             Inativa
+          </Badge>
+        )}
+        {item.budget_class ? (
+          <Badge variant={BUDGET_CLASS_BADGE[item.budget_class]} size="sm">
+            {BUDGET_CLASS_SHORT[item.budget_class]}
+          </Badge>
+        ) : (
+          <Badge variant="danger" size="sm" title="Sem classificação de orçamento">
+            A classificar
           </Badge>
         )}
         {item.is_recurring && (
@@ -145,7 +238,14 @@ function ManageExpenseItemList({
   );
 }
 
-export function ExpensesSheet() {
+export function ExpensesSheet({
+  manageOpen,
+  onManageOpenChange,
+}: {
+  manageOpen?: boolean;
+  onManageOpenChange?: (open: boolean) => void;
+}) {
+  const money = useMoneyFormat();
   const { monthsForward } = useFinanceSpreadsheetSettings();
   const {
     categories,
@@ -163,6 +263,8 @@ export function ExpensesSheet() {
     updateItem,
     deleteItem,
     getEntry,
+    cardItems,
+    getCardBreakdown,
     getMonthlyTotal,
     getCategoryTotal,
     getUncategorizedTotal,
@@ -171,9 +273,12 @@ export function ExpensesSheet() {
     fillItemColumnForMonths,
   } = useExpenses();
   const { toast } = useToast();
+  const { snapshots } = useFinanceMonthSnapshots();
   const [columnFillTarget, setColumnFillTarget] = useState<{ itemId: string; name: string } | null>(null);
-  const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
-  const [showManage, setShowManage] = useState(false);
+  const [collapsedCats, setCollapsedCats] = useState<Set<string>>(readCollapsedCats);
+  const [internalManageOpen, setInternalManageOpen] = useState(false);
+  const showManage = manageOpen !== undefined ? manageOpen : internalManageOpen;
+  const setShowManage = onManageOpenChange ?? setInternalManageOpen;
   /** Incrementado ao abrir Gerenciar para reinicializar o accordion (evita bug com Strict Mode). */
   const [manageListSession, setManageListSession] = useState(0);
   const [showNewCategoryModal, setShowNewCategoryModal] = useState(false);
@@ -191,12 +296,22 @@ export function ExpensesSheet() {
   const [formMonthTo, setFormMonthTo] = useState(currentMonthInputValue);
   const [formDefaultAmount, setFormDefaultAmount] = useState('');
   const [formRecurring, setFormRecurring] = useState(false);
+  /** Balde do orçamento; '' = a classificar. */
+  const [formBudgetClass, setFormBudgetClass] = useState<BudgetClass | ''>('');
   /** Vazio = sem vencimento; 1–31 = dia do mês em cada coluna da planilha. */
   const [formDueDay, setFormDueDay] = useState('');
+  /** Esta linha é a fatura de um cartão. */
+  const [formIsCard, setFormIsCard] = useState(false);
+  /** Item-cartão dentro do qual esta despesa é paga; '' = fora de cartão. */
+  const [formPaidWithItemId, setFormPaidWithItemId] = useState('');
+  /** Um cartão não se paga dentro de si próprio. */
+  const selectableCardItems = cardItems.filter((c) => c.id !== editingItemId);
   const [formActive, setFormActive] = useState(true);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState('');
   const [editingCategoryColor, setEditingCategoryColor] = useState<string | null>(null);
+  const [navigateTarget, setNavigateTarget] = useState<string | null>(null);
+  const [navigateTick, setNavigateTick] = useState(0);
   const [ctxMenu, setCtxMenu] = useState<{
     x: number;
     y: number;
@@ -216,10 +331,16 @@ export function ExpensesSheet() {
   const [removeTarget, setRemoveTarget] = useState<ExpenseItem | null>(null);
   const [removeBusy, setRemoveBusy] = useState(false);
 
-  const allMonths = buildSpreadsheetMonthList(
-    entries.map((e) => e.month),
-    monthsForward,
-  );
+  const allMonths = useMemo(() => {
+    const base = buildSpreadsheetMonthList(
+      entries.map((e) => e.month),
+      monthsForward,
+    );
+    const concluded = new Set(snapshots.map((s) => s.month));
+    const active = base.filter((m) => !concluded.has(m));
+    const archived = base.filter((m) => concluded.has(m));
+    return [...active, ...archived];
+  }, [entries, monthsForward, snapshots]);
 
   const allMonthsKey = allMonths.join('|');
   const itemsKey = items
@@ -308,6 +429,17 @@ export function ExpensesSheet() {
     });
   }, [showManage, manageListSession, manageCategoryDataKey, categories, items]);
 
+  useEffect(() => {
+    if (!navigateTarget) return;
+    const el = document.querySelector(`[data-cell="${navigateTarget}"]`);
+    if (el) {
+      const btn = el.querySelector('button');
+      if (btn) {
+        btn.click();
+      }
+    }
+  }, [navigateTarget, navigateTick]);
+
   function toggleManageAccordion(catId: string) {
     setManageExpandedCats((prev) => {
       const n = new Set(prev);
@@ -326,9 +458,21 @@ export function ExpensesSheet() {
     });
   }
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        COLLAPSED_CATS_STORAGE_KEY,
+        JSON.stringify([...collapsedCats]),
+      );
+    } catch {
+      // Ignora erros de quota ou modo privado
+    }
+  }, [collapsedCats]);
+
   async function handleSave(itemId: string, month: string, value: number) {
     try {
       await upsertEntry(itemId, month, value);
+      // Num item de cartão, mudar o valor muda o detalhado — logo, o restante.
     } catch {
       toast.error('Erro ao salvar');
     }
@@ -396,7 +540,10 @@ export function ExpensesSheet() {
     setFormMonthTo(cur);
     setFormDefaultAmount('');
     setFormRecurring(false);
+    setFormBudgetClass('');
     setFormDueDay('');
+    setFormIsCard(false);
+    setFormPaidWithItemId('');
     setFormActive(true);
   }
 
@@ -408,7 +555,10 @@ export function ExpensesSheet() {
     setFormMonthTo(cur);
     setFormDefaultAmount('');
     setFormRecurring(false);
+    setFormBudgetClass('');
     setFormDueDay('');
+    setFormIsCard(false);
+    setFormPaidWithItemId('');
     setFormActive(true);
     setFormCatId(
       preselectedCategoryId !== undefined ? preselectedCategoryId : (categories[0]?.id ?? ''),
@@ -531,7 +681,10 @@ export function ExpensesSheet() {
     setFormName(item.name);
     setFormDefaultAmount(item.default_amount != null ? String(item.default_amount) : '');
     setFormRecurring(item.is_recurring);
+    setFormBudgetClass(item.budget_class ?? '');
     setFormDueDay(item.due_day != null ? String(item.due_day) : '');
+    setFormIsCard(item.is_card);
+    setFormPaidWithItemId(item.paid_with_item_id ?? '');
     setFormActive(item.is_active);
 
     const itemEntries = entries.filter((e) => e.item_id === item.id);
@@ -570,8 +723,11 @@ export function ExpensesSheet() {
             category_id: catId,
             default_amount: def,
             is_recurring: formRecurring,
+            budget_class: formBudgetClass || null,
             is_active: formActive,
             due_day: dueDay,
+            is_card: formIsCard,
+            paid_with_item_id: formIsCard ? null : formPaidWithItemId || null,
           },
           formRecurring ? undefined : { monthFrom: formMonthFrom, monthTo: formMonthTo },
         );
@@ -581,10 +737,13 @@ export function ExpensesSheet() {
         await addItem(catId, formName.trim(), {
           defaultAmount: def,
           isRecurring: formRecurring,
+          budgetClass: formBudgetClass || null,
           monthFrom: formRecurring ? monthAnchor : monthInputValueToFirstDay(formMonthFrom),
           monthTo: formRecurring ? monthAnchor : monthInputValueToFirstDay(formMonthTo),
           visibleMonths: allMonths,
           dueDay,
+          isCard: formIsCard,
+          paidWithItemId: formPaidWithItemId || null,
         });
         toast.success('Item adicionado');
       }
@@ -601,46 +760,29 @@ export function ExpensesSheet() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-text-primary">Planilha de Despesas</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setCtxMenu(null);
-            setManageStep('list');
-            setManageListSession((s) => s + 1);
-            setShowManage(true);
-          }}
-          leftIcon={<Settings size={14} />}
-        >
-          Gerenciar
-        </Button>
-      </div>
-
-      <div className="overflow-x-auto rounded-xl border border-border">
+    <div className="flex flex-col">
+      <div className="overflow-x-auto border-t border-border">
         <table
           className={
             expenseColCount > 0
-              ? 'w-max min-w-full table-auto text-xs border-collapse'
-              : 'w-max max-w-full text-xs border-collapse'
+              ? 'w-max min-w-full table-fixed text-sm border-collapse'
+              : 'w-max max-w-full table-fixed text-sm border-collapse'
           }
         >
           <colgroup>
             <col className="w-20" />
-            <col className="min-w-40" />
+            <col className="w-40" />
             {expenseColCount > 0 &&
               Array.from({ length: expenseColCount }, (_, i) => (
-                <col key={i} className="min-w-40" />
+                <col key={i} className="w-40" />
               ))}
           </colgroup>
           <thead>
             <tr className="bg-surface-3">
-              <th className="sticky left-0 z-10 bg-surface-3 text-left px-2 py-2 font-medium text-text-muted border-b border-border whitespace-nowrap">
+              <th className="sticky left-0 z-10 bg-surface-3 text-left px-3 py-2 font-semibold text-text-secondary border-b border-border whitespace-nowrap">
                 Mês
               </th>
-              <th className="text-right px-2 py-2 font-medium text-text-muted border-b border-border min-w-40 whitespace-nowrap bg-surface-3/80">
+              <th className="sticky left-20 z-10 bg-surface-3 text-right px-3 py-2 font-semibold text-text-secondary border-b border-border min-w-40 whitespace-nowrap">
                 Total
               </th>
               {expenseDisplayGroups.map((g) => {
@@ -650,7 +792,7 @@ export function ExpensesSheet() {
                   <th
                     key={g.id}
                     rowSpan={2}
-                    className="cursor-pointer border-b border-border bg-surface-3 px-2 py-2 text-left font-semibold text-text-primary hover:bg-surface-4 min-w-40 whitespace-nowrap align-top"
+                    className="cursor-pointer border-b border-border bg-surface-3 px-2 py-2 text-left font-semibold text-text-secondary hover:bg-surface-4 min-w-40 whitespace-nowrap align-top"
                     style={{
                       ...(tint.band ? { backgroundColor: tint.band } : {}),
                       borderBottomWidth: tint.accent ? 2 : undefined,
@@ -679,7 +821,7 @@ export function ExpensesSheet() {
                   <th
                     key={`cat-${g.id}`}
                     colSpan={g.items.length}
-                    className={`bg-surface-3 text-left py-2 font-semibold text-text-primary border-b border-border cursor-pointer hover:bg-surface-4 ${SPREADSHEET_DATA_COL}`}
+                    className={`bg-surface-3 text-left py-2 font-semibold text-text-secondary border-b border-border cursor-pointer hover:bg-surface-4 ${SPREADSHEET_DATA_COL}`}
                     style={{
                       ...(tint.band ? { backgroundColor: tint.band } : {}),
                       borderBottomWidth: tint.accent ? 2 : undefined,
@@ -727,13 +869,63 @@ export function ExpensesSheet() {
                       >
                         <Columns2 size={16} strokeWidth={2} />
                       </button>
-                      <span className="block w-full pl-8 text-left text-sm font-semibold text-text-primary leading-snug">
+                      <span className="block w-full pl-8 text-left text-sm font-semibold text-text-secondary leading-snug">
                         <span className="whitespace-nowrap" title={item.name}>
                           {item.name}
                         </span>
-                        {item.due_day != null && (
-                          <span className="mt-0.5 block text-[10px] font-normal text-text-muted whitespace-nowrap">
-                            Venc. dia {item.due_day}
+                        {(item.budget_class ||
+                          item.is_recurring ||
+                          item.due_day != null ||
+                          item.is_card ||
+                          item.paid_with_item_id) && (
+                          <span className="mt-1 flex flex-wrap items-center gap-1">
+                            {item.is_card && (
+                              <Badge
+                                variant="info"
+                                size="sm"
+                                className="px-1.5 py-0 text-[10px]"
+                                title="Esta linha é a fatura de um cartão: o valor de cada mês é o total da fatura"
+                              >
+                                <CreditCard size={9} className="mr-0.5 inline" />
+                                Fatura
+                              </Badge>
+                            )}
+                            {item.paid_with_item_id && (
+                              <Badge
+                                variant="muted"
+                                size="sm"
+                                className="px-1.5 py-0 text-[10px]"
+                                title={`Pago dentro de “${items.find((c) => c.id === item.paid_with_item_id)?.name ?? '—'}”: decompõe a fatura, não soma ao mês`}
+                              >
+                                <CreditCard size={9} className="mr-0.5 inline" />
+                                {items.find((c) => c.id === item.paid_with_item_id)?.name ?? 'Cartão'}
+                              </Badge>
+                            )}
+                            {item.budget_class && (
+                              <Badge
+                                variant={BUDGET_CLASS_BADGE[item.budget_class]}
+                                size="sm"
+                                className="px-1.5 py-0 text-[10px]"
+                                title={BUDGET_CLASS_LABEL[item.budget_class]}
+                              >
+                                {BUDGET_CLASS_SHORT[item.budget_class]}
+                              </Badge>
+                            )}
+                            {item.is_recurring && (
+                              <Badge
+                                variant="success"
+                                size="sm"
+                                className="px-1.5 py-0 text-[10px]"
+                                title="Recorrente na planilha"
+                              >
+                                Rec.
+                              </Badge>
+                            )}
+                            {item.due_day != null && (
+                              <span className="text-[10px] font-normal text-text-muted whitespace-nowrap">
+                                Venc. dia {item.due_day}
+                              </span>
+                            )}
                           </span>
                         )}
                       </span>
@@ -745,17 +937,18 @@ export function ExpensesSheet() {
           </thead>
           <tbody>
             {allMonths.map((month, i) => {
+              // Espelha finance_monthly_summary: fora de cartão soma, cartão vale a fatura.
               const rowTotal = getMonthlyTotal(month);
               return (
                 <tr
                   key={month}
                   className={`hover:bg-surface-3/50 transition-colors ${i % 2 === 0 ? 'bg-surface-1' : 'bg-surface-2'}`}
                 >
-                  <td className="sticky left-0 z-10 px-2 py-1.5 font-medium text-text-secondary border-b border-border/50 bg-inherit whitespace-nowrap">
+                  <td className={`sticky left-0 z-10 px-3 py-1.5 font-semibold text-text-secondary border-b border-border/50 whitespace-nowrap ${i % 2 === 0 ? 'bg-surface-1' : 'bg-surface-2'}`}>
                     {formatMonth(month)}
                   </td>
-                  <td className="px-2 py-1.5 text-right font-semibold text-text-primary border-b border-border/50 min-w-40 whitespace-nowrap">
-                    {rowTotal > 0 ? formatBRL(rowTotal) : <span className="text-text-muted">—</span>}
+                  <td className={`sticky left-20 z-10 px-3 py-1.5 text-right font-semibold text-text-secondary border-b border-border/50 min-w-40 whitespace-nowrap ${i % 2 === 0 ? 'bg-surface-1' : 'bg-surface-2'}`}>
+                    {rowTotal > 0 ? money.format(rowTotal) : <span className="text-text-muted">—</span>}
                   </td>
                   {expenseDisplayGroups.map((g) => {
                     const tint = g.isUncategorized ? categoryTint(null) : categoryTint(g.color);
@@ -766,10 +959,10 @@ export function ExpensesSheet() {
                       return (
                         <td
                           key={g.id}
-                          className="min-w-40 whitespace-nowrap px-2 py-1.5 text-right font-semibold text-text-primary border-b border-border/50"
+                          className="min-w-40 whitespace-nowrap px-2 py-1.5 text-right font-semibold text-text-secondary border-b border-border/50"
                           style={tint.cell ? { backgroundColor: tint.cell } : undefined}
                         >
-                          {catTotal > 0 ? formatBRL(catTotal) : <span className="text-text-muted">—</span>}
+                          {catTotal > 0 ? money.format(catTotal) : <span className="text-text-muted">—</span>}
                         </td>
                       );
                     }
@@ -779,10 +972,11 @@ export function ExpensesSheet() {
                       return (
                         <td
                           key={item.id}
-                          className={`border-b border-border/50 ${SPREADSHEET_DATA_COL} py-1`}
+                          className={`border-b border-border/50 min-w-40 whitespace-nowrap px-0`}
                           style={tint.cell ? { backgroundColor: tint.cell } : undefined}
                         >
                           <div
+                            data-cell={`${item.id}:${month}`}
                             className="relative w-full cursor-pointer select-none [-webkit-touch-callout:none]"
                             onContextMenu={
                               effective > 0
@@ -802,12 +996,34 @@ export function ExpensesSheet() {
                             <InlineAmountCell
                               value={effective}
                               onSave={(v) => handleSave(item.id, month, v)}
-                              formatDisplay={formatBRL}
-                              parseInput={parseBRLInput}
+                              formatDisplay={money.format}
+                              parseInput={money.parse}
                               highlightVariant="success"
                               highlightActive={entry?.is_paid ?? false}
-                              className="rounded-md border border-border/40 bg-surface-3/25 px-1.5 py-1 text-xs leading-normal tabular-nums"
+                              className="px-2 py-1.5 text-sm leading-normal tabular-nums hover:bg-surface-3/25 hover:rounded-md"
+                              onArrowUp={() => {
+                                const idx = allMonths.indexOf(month);
+                                if (idx > 0) {
+                                  setNavigateTarget(`${item.id}:${allMonths[idx - 1]}`);
+                                  setNavigateTick(k => k + 1);
+                                }
+                              }}
+                              onArrowDown={() => {
+                                const idx = allMonths.indexOf(month);
+                                if (idx < allMonths.length - 1) {
+                                  setNavigateTarget(`${item.id}:${allMonths[idx + 1]}`);
+                                  setNavigateTick(k => k + 1);
+                                }
+                              }}
                             />
+                            {/* Numa linha de cartão, o valor é a fatura — e o que
+                                interessa saber é quanto dela ainda não tem nome. */}
+                            {item.is_card && effective > 0 && (
+                              <CardResidualHint
+                                breakdown={getCardBreakdown(item.id, month)}
+                                money={money}
+                              />
+                            )}
                           </div>
                         </td>
                       );
@@ -889,6 +1105,9 @@ export function ExpensesSheet() {
               ? 'Editar despesa'
               : 'Novo item'
         }
+        size={manageStep === 'list' ? 'xl' : 'lg'}
+        /* O corpo do Modal trava em max-h-[min(75vh,36rem)]; na web sobra espaço. */
+        className="[&>div:last-child]:max-h-[min(88vh,56rem)]"
       >
         {manageStep === 'list' ? (
           <div className="flex flex-col gap-4">
@@ -913,10 +1132,10 @@ export function ExpensesSheet() {
               </Button>
             </div>
 
-            <div className="flex min-h-0 max-h-[min(24rem,58vh)] flex-col gap-3 overflow-y-auto pr-1">
+            <div className="flex min-h-0 max-h-[min(42rem,68vh)] flex-col gap-3 overflow-y-auto pr-1">
               {categories.length === 0 && !items.some((i) => !i.category_id) ? (
                 <p className="shrink-0 rounded-lg border border-dashed border-border/80 bg-surface-2/40 px-4 py-8 text-center text-sm text-text-muted">
-                  Ainda não tens categorias. Cria uma para começar a organizar itens.
+                  Você ainda não tem categorias. Crie uma para começar a organizar itens.
                 </p>
               ) : null}
               {categories.map((cat) => {
@@ -1042,7 +1261,7 @@ export function ExpensesSheet() {
                                   onClick={() => void handleSaveCategoryEdit()}
                                   leftIcon={<Check size={14} />}
                                 >
-                                  Guardar
+                                  Salvar
                                 </Button>
                               </div>
                             </div>
@@ -1189,7 +1408,11 @@ export function ExpensesSheet() {
                 type="number"
                 step="0.01"
                 min={0}
-                placeholder={editingItemId ? 'Valor padrão (R$) — opcional' : 'Valor (R$) — opcional'}
+                placeholder={
+                  editingItemId
+                    ? `Valor padrão (${currencySymbol(money.currency)}) — opcional`
+                    : `Valor (${currencySymbol(money.currency)}) — opcional`
+                }
                 value={formDefaultAmount}
                 onChange={(e) => setFormDefaultAmount(e.target.value)}
               />
@@ -1209,6 +1432,86 @@ export function ExpensesSheet() {
                   Usado para lembretes push (Configurações). Meses com menos dias usam o último dia do mês.
                 </p>
               </div>
+              <div>
+                <label
+                  className="text-[10px] font-medium text-text-muted uppercase tracking-wide block mb-1"
+                  htmlFor="expense-budget-class"
+                >
+                  Orçamento
+                </label>
+                <select
+                  id="expense-budget-class"
+                  value={formBudgetClass}
+                  onChange={(e) => setFormBudgetClass((e.target.value as BudgetClass) || '')}
+                  className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-transparent text-sm text-text-primary outline-none ring-1 ring-inset ring-border focus:ring-brand-primary"
+                >
+                  <option value="">A classificar</option>
+                  {BUDGET_CLASSES.map((c) => (
+                    <option key={c} value={c}>
+                      {BUDGET_CLASS_LABEL[c]}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+                  {formBudgetClass === 'deduction'
+                    ? 'Abate da receita antes de dividir os baldes; não conta como gasto de vida.'
+                    : formBudgetClass === 'investment'
+                      ? 'Aporte: conta para a meta de investimento do mês.'
+                      : 'Define em que balde esta despesa entra na tela Orçamento.'}
+                </p>
+              </div>
+              <label className="flex items-start gap-2 cursor-pointer text-sm text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={formIsCard}
+                  onChange={(e) => {
+                    setFormIsCard(e.target.checked);
+                    // Um cartão não se paga dentro de outro cartão.
+                    if (e.target.checked) setFormPaidWithItemId('');
+                  }}
+                  className="mt-1 rounded border-border"
+                />
+                <span>
+                  <span className="font-medium text-text-primary">
+                    Esta linha é a fatura de um cartão
+                  </span>
+                  <span className="block text-xs text-text-muted mt-0.5">
+                    O valor que você lança em cada mês passa a ser o total da fatura, e outras despesas
+                    podem declarar-se pagas dentro dela.
+                  </span>
+                </span>
+              </label>
+              {!formIsCard && (
+                <div>
+                  <label
+                    className="text-[10px] font-medium text-text-muted uppercase tracking-wide block mb-1"
+                    htmlFor="expense-paid-with"
+                  >
+                    Pago no cartão (opcional)
+                  </label>
+                  <select
+                    id="expense-paid-with"
+                    value={formPaidWithItemId}
+                    onChange={(e) => setFormPaidWithItemId(e.target.value)}
+                    disabled={selectableCardItems.length === 0}
+                    className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-transparent text-sm text-text-primary outline-none ring-1 ring-inset ring-border focus:ring-brand-primary disabled:opacity-60"
+                  >
+                    <option value="">Fora de cartão (débito, pix, dinheiro)</option>
+                    {selectableCardItems.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+                    {selectableCardItems.length === 0
+                      ? 'Você ainda não tem nenhuma linha marcada como fatura de cartão. Marque a despesa do cartão (ex.: “Itau Black”) com a opção acima e ela passa a aparecer aqui.'
+                      : formPaidWithItemId
+                        ? 'Este item deixa de somar ao total do mês: passa a decompor a fatura desse cartão. O que sobrar da fatura fica no balde que deste ao cartão.'
+                        : 'Some ao total do mês por si, como sempre.'}
+                  </p>
+                </div>
+              )}
               <label className="flex items-start gap-2 cursor-pointer text-sm text-text-secondary">
                 <input
                   type="checkbox"
@@ -1221,7 +1524,7 @@ export function ExpensesSheet() {
                   <span className="block text-xs text-text-muted mt-0.5">
                     {editingItemId
                       ? 'Com valor &gt; 0, aplica o padrão aos meses visíveis sem valor próprio.'
-                      : 'Com valor &gt; 0, preenche automaticamente todos os meses visíveis na planilha. Podes alterar qualquer mês à mão.'}
+                      : 'Com valor &gt; 0, preenche automaticamente todos os meses visíveis na planilha. Você pode alterar qualquer mês à mão.'}
                   </span>
                 </span>
               </label>
@@ -1241,7 +1544,7 @@ export function ExpensesSheet() {
                 disabled={saving || !formName.trim()}
                 leftIcon={editingItemId ? <Check size={14} /> : <Plus size={14} />}
               >
-                {editingItemId ? 'Guardar' : 'Adicionar'}
+                {editingItemId ? 'Salvar' : 'Adicionar'}
               </Button>
             </div>
           </div>
@@ -1312,7 +1615,7 @@ export function ExpensesSheet() {
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-text-secondary">
-            O que queres fazer com{' '}
+            O que você quer fazer com{' '}
             <span className="font-semibold text-text-primary">
               &quot;{removeTarget?.name ?? ''}&quot;
             </span>

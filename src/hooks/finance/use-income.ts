@@ -4,11 +4,24 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useUserStore } from '@/store/user-store';
 import { usePlanningHorizonListener } from '@/hooks/finance/use-planning-horizon-listener';
+import { normalizeOptionalCurrencyCode } from '@/lib/finance/currency';
 import type { IncomeSource, IncomeEntry } from '@/types/finance';
 
 function normalizeMonthKey(m: string): string {
   if (!m) return '';
   return m.length >= 10 ? m.slice(0, 10) : m;
+}
+
+/** PostgREST devolve numéricos como string e a moeda pode vir suja/ausente. */
+function normalizeSource(row: IncomeSource): IncomeSource {
+  const currency = normalizeOptionalCurrencyCode(row.currency);
+  return {
+    ...row,
+    default_monthly_amount: Number(row.default_monthly_amount ?? 0),
+    currency,
+    // Sem moeda própria, a fronteira não significa nada.
+    currency_since: currency && row.currency_since ? normalizeMonthKey(row.currency_since) : null,
+  };
 }
 
 export function useIncome() {
@@ -33,12 +46,7 @@ export function useIncome() {
         .order('month', { ascending: false }),
     ]);
     const rawSources = (srcData ?? []) as IncomeSource[];
-    setSources(
-      rawSources.map((s) => ({
-        ...s,
-        default_monthly_amount: Number((s as { default_monthly_amount?: number }).default_monthly_amount ?? 0),
-      })),
-    );
+    setSources(rawSources.map(normalizeSource));
     setEntries((entData ?? []) as IncomeEntry[]);
     setIsLoading(false);
   }, [user]);
@@ -125,11 +133,18 @@ export function useIncome() {
     [user?.id, fetchAll],
   );
 
-  async function addSource(name: string, defaultMonthlyAmount = 0) {
+  /** `currency` null = a fonte lança na moeda padrão do usuário. */
+  async function addSource(
+    name: string,
+    defaultMonthlyAmount = 0,
+    currency: string | null = null,
+    currencySince: string | null = null,
+  ) {
     if (!user) return;
     const supabase = createClient();
     const maxOrder = sources.length > 0 ? Math.max(...sources.map((s) => s.sort_order)) + 1 : 0;
     const safeDefault = Math.max(0, Number(defaultMonthlyAmount) || 0);
+    const code = normalizeOptionalCurrencyCode(currency);
     const { data, error } = await supabase
       .from('finance_income_sources')
       .insert({
@@ -137,18 +152,89 @@ export function useIncome() {
         name,
         sort_order: maxOrder,
         default_monthly_amount: safeDefault,
+        currency: code,
+        currency_since: code ? currencySince : null,
       })
       .select()
       .single();
     if (error) throw new Error(error.message);
-    const row = data as IncomeSource;
-    setSources((prev) => [...prev, { ...row, default_monthly_amount: Number(row.default_monthly_amount ?? 0) }]);
+    const row = normalizeSource(data as IncomeSource);
+    setSources((prev) => [...prev, row]);
     return row;
   }
 
+  /**
+   * Troca a moeda de uma fonte a partir de `since` (mês 'YYYY-MM-DD'; null = todo
+   * o histórico). `factor` > 0 reescreve os valores desses meses — e o padrão
+   * mensal — para a moeda nova; `factor = 1` só re-etiqueta, mantendo os números.
+   * Lançamentos anteriores a `since` nunca são tocados nem reinterpretados.
+   */
+  const changeSourceCurrency = useCallback(
+    async (
+      sourceId: string,
+      nextCurrency: string | null,
+      factor: number,
+      since: string | null = null,
+    ) => {
+      if (!user?.id) return;
+      const supabase = createClient();
+      const safeFactor = Number.isFinite(factor) && factor > 0 ? factor : 1;
+      const code = normalizeOptionalCurrencyCode(nextCurrency);
+      const boundary = code && since ? normalizeMonthKey(since) : null;
+
+      if (safeFactor !== 1) {
+        let query = supabase
+          .from('finance_income_entries')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('source_id', sourceId);
+        if (boundary) query = query.gte('month', boundary);
+
+        const { data, error: readError } = await query;
+        if (readError) throw new Error(readError.message);
+
+        const rescaled = (data ?? []).map((row) => {
+          const entry = row as IncomeEntry;
+          return { ...entry, amount: Math.round(Number(entry.amount ?? 0) * safeFactor * 100) / 100 };
+        });
+        if (rescaled.length > 0) {
+          const { error } = await supabase
+            .from('finance_income_entries')
+            .upsert(rescaled, { onConflict: 'user_id,source_id,month' });
+          if (error) throw new Error(error.message);
+        }
+      }
+
+      const source = sources.find((s) => s.id === sourceId);
+      const nextDefault =
+        safeFactor === 1
+          ? undefined
+          : Math.round(Number(source?.default_monthly_amount ?? 0) * safeFactor * 100) / 100;
+
+      const { error } = await supabase
+        .from('finance_income_sources')
+        .update({
+          currency: code,
+          currency_since: boundary,
+          ...(nextDefault === undefined ? {} : { default_monthly_amount: nextDefault }),
+        })
+        .eq('id', sourceId)
+        .eq('user_id', user.id);
+      if (error) throw new Error(error.message);
+
+      await fetchAll();
+    },
+    [user?.id, sources, fetchAll],
+  );
+
   async function updateSource(
     id: string,
-    patch: Partial<Pick<IncomeSource, 'name' | 'is_active' | 'sort_order' | 'default_monthly_amount'>>,
+    patch: Partial<
+      Pick<
+        IncomeSource,
+        'name' | 'is_active' | 'sort_order' | 'default_monthly_amount' | 'currency' | 'currency_since'
+      >
+    >,
   ) {
     if (!user) return;
     const supabase = createClient();
@@ -160,18 +246,20 @@ export function useIncome() {
       .select()
       .single();
     if (error) throw new Error(error.message);
-    const row = data as IncomeSource;
-    setSources((prev) =>
-      prev.map((s) =>
-        s.id === id ? { ...row, default_monthly_amount: Number(row.default_monthly_amount ?? 0) } : s,
-      ),
-    );
+    const row = normalizeSource(data as IncomeSource);
+    setSources((prev) => prev.map((s) => (s.id === id ? row : s)));
   }
 
   function getEntry(sourceId: string, month: string): IncomeEntry | undefined {
     return entries.find((e) => e.source_id === sourceId && e.month === month);
   }
 
+  /**
+   * Soma bruta das entradas do mês, cada uma na moeda da sua fonte — só é
+   * comparável se todas as fontes usarem a mesma moeda. Para o total real usa
+   * `finance_monthly_summary` (a view já converte) ou converte aqui com
+   * `useCurrencyConversion().convert(amount, source.currency)`.
+   */
   function getMonthlyTotal(month: string): number {
     return entries
       .filter((e) => e.month === month)
@@ -189,6 +277,7 @@ export function useIncome() {
     upsertEntry,
     addSource,
     updateSource,
+    changeSourceCurrency,
     getEntry,
     getMonthlyTotal,
     ensureDefaultIncomeEntriesForMonths,

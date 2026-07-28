@@ -6,7 +6,14 @@ import { useUserStore } from '@/store/user-store';
 import { usePlanningHorizonListener } from '@/hooks/finance/use-planning-horizon-listener';
 import { buildMonthRange, monthInputValueToFirstDay, toMonthDate } from '@/lib/finance/finance';
 import { getLocalDateStr } from '@/lib/habits-goals/timezone';
-import type { ExpenseCategory, ExpenseItem, ExpenseEntry } from '@/types/finance';
+import {
+  normalizeBudgetClass,
+  type BudgetClass,
+  type CardBreakdown,
+  type ExpenseCategory,
+  type ExpenseItem,
+  type ExpenseEntry,
+} from '@/types/finance';
 
 function normalizeMonthKey(m: string): string {
   if (!m) return '';
@@ -16,11 +23,17 @@ function normalizeMonthKey(m: string): string {
 export type AddExpenseItemOptions = {
   defaultAmount?: number | null;
   isRecurring?: boolean;
+  /** Balde do orçamento; null/omitido = a classificar. */
+  budgetClass?: BudgetClass | null;
   monthFrom?: string;
   monthTo?: string;
   visibleMonths?: string[];
   /** 1–31 ou null para limpar. */
   dueDay?: number | null;
+  /** Marca a linha como sendo a fatura de um cartão. */
+  isCard?: boolean;
+  /** Item-cartão dentro do qual esta despesa é paga; null = fora de cartão. */
+  paidWithItemId?: string | null;
 };
 
 export function useExpenses() {
@@ -58,8 +71,11 @@ export function useExpenses() {
           ...i,
           category_id: i.category_id ?? null,
           is_recurring: Boolean(i.is_recurring),
+          budget_class: normalizeBudgetClass(i.budget_class),
           default_amount: i.default_amount != null ? Number(i.default_amount) : null,
           due_day: i.due_day != null ? Number(i.due_day) : null,
+          is_card: Boolean(i.is_card),
+          paid_with_item_id: i.paid_with_item_id ?? null,
         };
       }),
     );
@@ -276,6 +292,7 @@ export function useExpenses() {
         ? Number(opts.defaultAmount)
         : null;
     const recurring = opts?.isRecurring ?? false;
+    const budgetClass = normalizeBudgetClass(opts?.budgetClass);
     const dueDay =
       opts?.dueDay !== undefined && opts.dueDay !== null && !Number.isNaN(Number(opts.dueDay))
         ? Math.min(31, Math.max(1, Math.round(Number(opts.dueDay))))
@@ -288,8 +305,11 @@ export function useExpenses() {
         name,
         default_amount: defaultAmt,
         is_recurring: recurring,
+        budget_class: budgetClass,
         sort_order: maxOrder,
         due_day: dueDay,
+        is_card: opts?.isCard ?? false,
+        paid_with_item_id: opts?.isCard ? null : (opts?.paidWithItemId ?? null),
       })
       .select()
       .single();
@@ -331,8 +351,11 @@ export function useExpenses() {
         | 'is_active'
         | 'default_amount'
         | 'is_recurring'
+        | 'budget_class'
         | 'category_id'
         | 'due_day'
+        | 'is_card'
+        | 'paid_with_item_id'
       >
     >,
     monthRange?: { monthFrom: string; monthTo: string },
@@ -358,6 +381,7 @@ export function useExpenses() {
               ...row,
               category_id: row.category_id ?? null,
               is_recurring: Boolean(row.is_recurring),
+              budget_class: normalizeBudgetClass(row.budget_class),
               default_amount: row.default_amount != null ? Number(row.default_amount) : null,
             }
           : i,
@@ -446,10 +470,45 @@ export function useExpenses() {
     return 0;
   }
 
-  function getMonthlyTotal(month: string): number {
-    return activeItems.reduce((sum, item) => sum + getEffectiveExpenseAmount(item.id, month), 0);
+  /** Itens marcados como fatura de cartão — o que o seletor "pago no cartão" oferece. */
+  const cardItems = activeItems.filter((i) => i.is_card);
+
+  /**
+   * Fatura, detalhado e restante de um item-cartão no mês. Calculado aqui e não
+   * lido de `finance_card_breakdown` para acompanhar as edições da planilha sem
+   * ida à rede; a vista existe para as vistas de totais e para o arquivo.
+   */
+  function getCardBreakdown(cardItemId: string, month: string): CardBreakdown {
+    const children = activeItems.filter((i) => i.paid_with_item_id === cardItemId);
+    const itemizedAmount = children.reduce(
+      (sum, c) => sum + getEffectiveExpenseAmount(c.id, month),
+      0,
+    );
+    const invoiceAmount = getEffectiveExpenseAmount(cardItemId, month);
+    return {
+      invoiceAmount,
+      itemizedAmount,
+      itemizedCount: children.length,
+      residualAmount: invoiceAmount - itemizedAmount,
+    };
   }
 
+  /**
+   * Espelha o CTE `expenses` de `finance_monthly_summary`: a linha do cartão
+   * soma (é a fatura) e as linhas pagas dentro dela não somam (decompõem-na).
+   */
+  function getMonthlyTotal(month: string): number {
+    return activeItems
+      .filter((i) => !i.paid_with_item_id)
+      .reduce((sum, item) => sum + getEffectiveExpenseAmount(item.id, month), 0);
+  }
+
+  /**
+   * Aqui as linhas pagas dentro de um cartão contam: a pergunta é quanto se
+   * gastou nesta categoria, e isso não depende de com que meio se pagou. Por
+   * isso a soma das categorias não fecha com o total do mês — a diferença é o
+   * que já está dentro de uma fatura.
+   */
   function getCategoryTotal(categoryId: string, month: string): number {
     return activeItems
       .filter((i) => i.category_id === categoryId)
@@ -478,6 +537,8 @@ export function useExpenses() {
     updateItem,
     deleteItem,
     getEntry,
+    cardItems,
+    getCardBreakdown,
     getMonthlyTotal,
     getCategoryTotal,
     getUncategorizedTotal,

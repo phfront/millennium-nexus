@@ -115,7 +115,7 @@ export function CaloriasSettingsForm() {
       </div>
 
       <Button type="button" disabled={saving} onClick={() => void handleSave()} className="w-full sm:w-auto">
-        Guardar
+        Salvar
       </Button>
     </div>
   );

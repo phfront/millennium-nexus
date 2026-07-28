@@ -8,8 +8,8 @@
  * O dedupe usa o minuto local programado para evitar reenvios nas janelas
  * sobrepostas do catch-up.
  * I/O: uma leitura de `push_subscriptions` no início; Daily Goals e nutrição só
- * consideram utilizadores com push.
- * 1) Daily Goals: regras em `tracker_notifications` (horário local do utilizador).
+ * consideram usuários com push.
+ * 1) Daily Goals: regras em `tracker_notifications` (horário local do usuário).
  * 2) Nutrição — lembretes por `diet_plan_meals.target_time` (relógio local via `profiles.timezone`),
  *    antecedência em `diet_settings.meal_reminder_lead_minutes`, opt-in `meal_reminder_push_enabled`;
  *    além dos fixos 16h (água) e 21h (checklist vazio).
@@ -68,7 +68,7 @@ interface PushSubscription {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers de tempo (horários configurados = relógio local do utilizador)
+// Helpers de tempo (horários configurados = relógio local do usuário)
 // ---------------------------------------------------------------------------
 function toMinutes(timeStr: string): number {
   const [h, m] = timeStr.split(':').map(Number);
@@ -164,7 +164,7 @@ function dedupeSubscriptionsByEndpoint(subs: PushSubscription[]): PushSubscripti
   return [...byEndpoint.values()];
 }
 
-/** Reserva envio único por utilizador / chave / dia civil local; retorna false se já enviado. */
+/** Reserva envio único por usuário / chave / dia civil local; retorna false se já enviado. */
 async function claimDietPushDedupe(
   supabase: SupabaseServiceClient,
   userId: string,
@@ -205,7 +205,7 @@ async function claimPushDedupe(
   return true;
 }
 
-/** Data civil YYYY-MM-DD no fuso IANA do utilizador. */
+/** Data civil YYYY-MM-DD no fuso IANA do usuário. */
 function getZonedDateYmd(now: Date, timeZone: string): string {
   const tz = timeZone?.trim() || 'UTC';
   try {
@@ -861,7 +861,7 @@ async function sendNutritionReminders(
 ): Promise<{ sent: number; expired: number; checked: number }> {
   if (pushUserIds.length === 0) return { sent: 0, expired: 0, checked: 0 };
 
-  // Só utilizadores com subscrição push (evita full scan de diet_settings)
+  // Só usuários com subscrição push (evita full scan de diet_settings)
   const { data: settingsRows, error: settingsErr } = await supabase
     .from('diet_settings')
     .select(

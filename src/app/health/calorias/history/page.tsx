@@ -35,7 +35,7 @@ export default async function HealthCaloriasHistoryPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-1 sm:px-0">
       <PageHeader
         title="Histórico"
-        subtitle="Registos de kcal por dia, com a mesma meta diária e saldo semanal que no ecrã principal."
+        subtitle="Registros de kcal por dia, com a mesma meta diária e saldo semanal que na tela principal."
       />
       <CaloriasHistoryClient />
       <p className="text-center text-sm text-text-muted">

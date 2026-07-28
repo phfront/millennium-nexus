@@ -153,8 +153,8 @@ export function WaterTracker({ targetMl = 2500, cardMinHeightClass, hasBackgroun
             onClick={() => void handleRemoveLast()}
             aria-label={
               logs.length > 0
-                ? `Desfazer último registo (${lastMl} ml)`
-                : 'Desfazer último registo (indisponível sem histórico)'
+                ? `Desfazer último registro (${lastMl} ml)`
+                : 'Desfazer último registro (indisponível sem histórico)'
             }
             className={[
               'flex min-h-0 min-w-0 cursor-pointer flex-col items-center justify-center rounded-xl py-1',

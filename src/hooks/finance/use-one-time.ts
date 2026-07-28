@@ -6,7 +6,7 @@ import { useUserStore } from '@/store/user-store';
 import { usePlanningHorizonListener } from '@/hooks/finance/use-planning-horizon-listener';
 import { normalizeExpenseMonthKey } from '@/lib/finance/finance';
 import { getLocalDateStr } from '@/lib/habits-goals/timezone';
-import type { OneTimeEntry } from '@/types/finance';
+import { normalizeBudgetClass, type BudgetClass, type OneTimeEntry } from '@/types/finance';
 
 function mapRow(row: Record<string, unknown>): OneTimeEntry {
   const flow = row.flow === 'income' ? 'income' : 'expense';
@@ -15,6 +15,7 @@ function mapRow(row: Record<string, unknown>): OneTimeEntry {
     flow,
     due_date: (row.due_date as string | null) ?? null,
     paid_note: (row.paid_note as string | null) ?? null,
+    budget_class: normalizeBudgetClass(row.budget_class),
   };
 }
 
@@ -45,7 +46,11 @@ export function useOneTime() {
     month: string,
     amount: number,
     id?: string,
-    extra?: { due_date?: string | null; flow?: 'expense' | 'income' },
+    extra?: {
+      due_date?: string | null;
+      flow?: 'expense' | 'income';
+      budget_class?: BudgetClass | null;
+    },
   ) {
     if (!user) return;
     const supabase = createClient();
@@ -56,8 +61,13 @@ export function useOneTime() {
         name: string;
         due_date?: string | null;
         flow?: 'expense' | 'income';
+        budget_class?: BudgetClass | null;
       } = { amount, name, flow };
       if (extra && 'due_date' in extra) patch.due_date = extra.due_date ?? null;
+      if (extra && 'budget_class' in extra) {
+        // Receita pontual não tem balde; só despesa é classificada.
+        patch.budget_class = flow === 'income' ? null : normalizeBudgetClass(extra.budget_class);
+      }
       const { data, error } = await supabase
         .from('finance_one_time_entries')
         .update(patch)
@@ -79,6 +89,7 @@ export function useOneTime() {
         amount,
         due_date: extra?.due_date ?? null,
         flow,
+        budget_class: flow === 'income' ? null : normalizeBudgetClass(extra?.budget_class),
       })
       .select()
       .single();

@@ -3,7 +3,8 @@
 import { Skeleton } from '@phfront/millennium-ui';
 import { Modal } from '@phfront/millennium-ui';
 import { useFinanceMonthDetail } from '@/hooks/finance/use-finance-month-detail';
-import { formatBRL, formatDate, formatMonthLong } from '@/lib/finance/format';
+import { formatDate, formatMonthLong } from '@/lib/finance/format';
+import { useMoneyFormat } from '@/hooks/finance/use-money-format';
 import { surplusColor } from '@/lib/finance/finance';
 
 type Props = {
@@ -63,6 +64,7 @@ function PaidNoteBlock({ text }: { text: string | null | undefined }) {
 }
 
 export function MonthDetailModal({ month, onClose }: Props) {
+  const money = useMoneyFormat();
   const {
     income,
     expenseGroups,
@@ -114,7 +116,7 @@ export function MonthDetailModal({ month, onClose }: Props) {
                     >
                       <span className="text-text-primary">{r.item_name}</span>
                       <span className="tabular-nums font-medium text-green-500">
-                        {formatBRL(r.amount)}
+                        {money.format(r.amount)}
                       </span>
                     </li>
                   ))}
@@ -122,7 +124,7 @@ export function MonthDetailModal({ month, onClose }: Props) {
                 <div className="flex justify-between px-3 py-2 mt-1 rounded-lg bg-surface-3/50">
                   <span className="text-sm font-semibold text-text-primary">Total receitas</span>
                   <span className="text-sm tabular-nums font-semibold text-green-500">
-                    {formatBRL(totalIncome)}
+                    {money.format(totalIncome)}
                   </span>
                 </div>
               </section>
@@ -148,7 +150,7 @@ export function MonthDetailModal({ month, onClose }: Props) {
                             {g.category_name ?? 'Sem categoria'}
                           </span>
                           <span className="ml-auto text-xs tabular-nums text-text-muted">
-                            {formatBRL(catTotal)}
+                            {money.format(catTotal)}
                           </span>
                         </div>
                         <ul className="flex flex-col border border-border/60 rounded-lg overflow-hidden">
@@ -163,7 +165,7 @@ export function MonthDetailModal({ month, onClose }: Props) {
                               </div>
                               <PaidBadge isPaid={item.is_paid} />
                               <span className="tabular-nums text-text-secondary shrink-0 pt-0.5">
-                                {formatBRL(item.amount)}
+                                {money.format(item.amount)}
                               </span>
                             </li>
                           ))}
@@ -174,7 +176,7 @@ export function MonthDetailModal({ month, onClose }: Props) {
                   <div className="flex justify-between px-3 py-2 rounded-lg bg-surface-3/50">
                     <span className="text-sm font-semibold text-text-primary">Total despesas</span>
                     <span className="text-sm tabular-nums font-semibold text-red-500">
-                      {formatBRL(totalExpenses)}
+                      {money.format(totalExpenses)}
                     </span>
                   </div>
                 </div>
@@ -217,7 +219,7 @@ export function MonthDetailModal({ month, onClose }: Props) {
                           r.flow === 'income' ? 'text-green-500' : 'text-text-secondary'
                         }`}
                       >
-                        {formatBRL(r.amount)}
+                        {money.format(r.amount)}
                       </span>
                     </li>
                   ))}
@@ -227,7 +229,7 @@ export function MonthDetailModal({ month, onClose }: Props) {
                     <div className="flex justify-between gap-3">
                       <span className="text-sm text-text-secondary">Despesas pontuais</span>
                       <span className="text-sm tabular-nums font-semibold text-red-500">
-                        {formatBRL(totalOneTimeExpense)}
+                        {money.format(totalOneTimeExpense)}
                       </span>
                     </div>
                   )}
@@ -235,7 +237,7 @@ export function MonthDetailModal({ month, onClose }: Props) {
                     <div className="flex justify-between gap-3">
                       <span className="text-sm text-text-secondary">Receitas pontuais</span>
                       <span className="text-sm tabular-nums font-semibold text-green-500">
-                        {formatBRL(totalOneTimeIncome)}
+                        {money.format(totalOneTimeIncome)}
                       </span>
                     </div>
                   )}
@@ -247,7 +249,7 @@ export function MonthDetailModal({ month, onClose }: Props) {
             <div className="flex justify-between items-center pt-4 border-t border-border">
               <span className="text-base font-bold text-text-primary">Sobra do mês</span>
               <span className={`text-base tabular-nums font-bold ${surplusColor(surplus)}`}>
-                {formatBRL(surplus)}
+                {money.format(surplus)}
               </span>
             </div>
 

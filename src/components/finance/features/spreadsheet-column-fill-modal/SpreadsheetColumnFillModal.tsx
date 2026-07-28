@@ -2,13 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { Modal, Input, Button } from '@phfront/millennium-ui';
-import { parseBRLInput } from '@/lib/finance/format';
+import { parseMoneyInput } from '@/lib/finance/format';
+import { currencySymbol } from '@/lib/finance/currency';
+import { useMoneyFormat } from '@/hooks/finance/use-money-format';
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
   columnLabel: string;
   monthCount: number;
+  /** Moeda em que a coluna é lançada; por omissão, a moeda de exibição. */
+  currencyCode?: string;
   onApply: (amount: number) => Promise<void>;
 };
 
@@ -17,8 +21,10 @@ export function SpreadsheetColumnFillModal({
   onClose,
   columnLabel,
   monthCount,
+  currencyCode,
   onApply,
 }: Props) {
+  const money = useMoneyFormat();
   const [raw, setRaw] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -27,7 +33,7 @@ export function SpreadsheetColumnFillModal({
   }, [isOpen, columnLabel]);
 
   async function submit() {
-    const n = parseBRLInput(raw);
+    const n = parseMoneyInput(raw);
     setSaving(true);
     try {
       await onApply(n);
@@ -43,7 +49,7 @@ export function SpreadsheetColumnFillModal({
         Aplica o mesmo valor a todos os <strong>{monthCount}</strong> meses visíveis nesta planilha.
       </p>
       <Input
-        label="Valor (R$)"
+        label={`Valor (${currencySymbol(currencyCode ?? money.currency)})`}
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
         placeholder="ex. 150,00"

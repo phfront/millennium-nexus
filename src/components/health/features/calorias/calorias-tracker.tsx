@@ -261,8 +261,8 @@ export function CaloriasTracker({
             onClick={() => void handleUndo()}
             aria-label={
               todayLogs.length > 0
-                ? `Desfazer último registo (${lastToday} kcal)`
-                : 'Desfazer último registo (indisponível sem histórico hoje)'
+                ? `Desfazer último registro (${lastToday} kcal)`
+                : 'Desfazer último registro (indisponível sem histórico hoje)'
             }
             className={[
               'flex min-h-0 min-w-0 cursor-pointer flex-col items-center justify-center rounded-xl',

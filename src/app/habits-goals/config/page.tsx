@@ -22,7 +22,7 @@ export default function ConfigPage() {
   async function handleRemove(id: string, label: string) {
     if (
       !confirm(
-        `Remover a meta "${label}"?\n\nOs registos dos dias anteriores mantêm-se no histórico; esta meta deixa de aparecer no dia a dia.`,
+        `Remover a meta "${label}"?\n\nOs registros dos dias anteriores mantêm-se no histórico; esta meta deixa de aparecer no dia a dia.`,
       )
     ) {
       return;
