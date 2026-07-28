@@ -70,8 +70,8 @@ export function AdminModuleMatrix({ users, modules, deniedPairs }: AdminModuleMa
     return (
       <EmptyState
         className="py-10"
-        title="Nenhum utilizador encontrado"
-        description="Não há perfis para gerir neste momento."
+        title="Nenhum usuário encontrado"
+        description="Não há perfis para gerenciar neste momento."
       />
     );
   }
@@ -118,7 +118,7 @@ export function AdminModuleMatrix({ users, modules, deniedPairs }: AdminModuleMa
   }));
 
   const matrixFooterNote =
-    'Desligar o interruptor revoga o acesso ao módulo. Utilizadores admin continuam a poder abrir /admin.';
+    'Desligar o interruptor revoga o acesso ao módulo. Usuários admin continuam a poder abrir /admin.';
 
   const matrixFooter = <p className="p-3 text-xs text-text-muted">{matrixFooterNote}</p>;
 
@@ -126,7 +126,7 @@ export function AdminModuleMatrix({ users, modules, deniedPairs }: AdminModuleMa
     <>
       <div className="hidden min-w-0 md:block">
         <ToggleMatrix
-          cornerHeader="Utilizador"
+          cornerHeader="Usuário"
           rows={rows}
           columns={columns}
           isChecked={(userId, moduleId) => !localDenied.has(denialKey(userId, moduleId))}

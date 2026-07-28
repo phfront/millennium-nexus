@@ -4,7 +4,7 @@ export type IncomeSource = {
   name: string;
   is_active: boolean;
   sort_order: number;
-  /** Valor sugerido por mês; preenche células sem entrada (podes alterar mês a mês na planilha). */
+  /** Valor sugerido por mês; preenche células sem entrada (você pode alterar mês a mês na planilha). */
   default_monthly_amount: number;
   created_at: string;
 };
@@ -36,6 +36,8 @@ export type ExpenseItem = {
   default_amount: number | null;
   /** Se true, preenche meses visíveis sem linha com `default_amount` (quando > 0). */
   is_recurring: boolean;
+  /** Balde do orçamento (ver `BudgetClass` em types/finance); null = a classificar. */
+  budget_class: 'essential' | 'optional' | 'investment' | 'deduction' | null;
   /** Dia do mês do vencimento (1–31); null = sem lembrete por vencimento. */
   due_day: number | null;
   is_active: boolean;
@@ -120,7 +122,7 @@ export type FinanceUserSettings = {
   updated_at: string;
 };
 
-/** Resumo congelado no fecho do mês (consulta futura; não reflete edições posteriores nas entradas). */
+/** Resumo congelado no fechamento do mês (consulta futura; não reflete edições posteriores nas entradas). */
 export type FinanceMonthSnapshot = {
   user_id: string;
   month: string;
@@ -134,7 +136,7 @@ export type FinanceMonthSnapshot = {
   breaks_accumulated_carryover: boolean;
 };
 
-/** Lançamento individual congelado no fecho do mês (nome/valor gravados no momento do arquivo). */
+/** Lançamento individual congelado no fechamento do mês (nome/valor gravados no momento do arquivo). */
 export type FinanceMonthSnapshotEntry = {
   id: string;
   user_id: string;

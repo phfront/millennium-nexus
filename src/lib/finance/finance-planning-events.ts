@@ -1,4 +1,4 @@
-/** Disparado após reduzir «meses à frente» e remover linhas futuras extra na BD. */
+/** Disparado após reduzir “meses à frente” e remover linhas futuras extra na BD. */
 export const PLANNING_HORIZON_CHANGED_EVENT = 'nexus-inflow:planning-horizon-changed';
 
 export function emitPlanningHorizonChanged(): void {

@@ -59,7 +59,7 @@ export default function EditGoalPage() {
 
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-6">
-      <PageHeader title="Editar meta" subtitle="Atualize as definições deste tracker." />
+      <PageHeader title="Editar meta" subtitle="Atualize as configurações deste tracker." />
       <GoalForm
         key={tracker.id}
         initial={tracker}

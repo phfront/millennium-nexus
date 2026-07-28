@@ -3,12 +3,14 @@
 import { useState } from 'react';
 import { Skeleton } from '@phfront/millennium-ui';
 import { useFinanceMonthSnapshots } from '@/hooks/finance/use-finance-month-snapshots';
-import { formatBRL, formatMonth } from '@/lib/finance/format';
+import { formatMonth } from '@/lib/finance/format';
+import { useMoneyFormat } from '@/hooks/finance/use-money-format';
 import { surplusColor } from '@/lib/finance/finance';
 import { MonthDetailModal } from '@/components/finance/features/month-history/MonthDetailModal';
 
 export function MonthHistoryTable() {
   const { snapshots, isLoading } = useFinanceMonthSnapshots();
+  const money = useMoneyFormat();
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
   if (isLoading) {
@@ -58,19 +60,19 @@ export function MonthHistoryTable() {
                 >
                   <td className="px-3 py-2 font-medium text-text-primary">{formatMonth(monthKey)}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-text-secondary">
-                    {formatBRL(Number(s.total_income))}
+                    {money.format(Number(s.total_income))}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-text-secondary">
-                    {formatBRL(Number(s.total_expenses))}
+                    {money.format(Number(s.total_expenses))}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-text-secondary">
-                    {formatBRL(Number(s.total_one_time))}
+                    {money.format(Number(s.total_one_time))}
                   </td>
                   <td className={`px-3 py-2 text-right tabular-nums font-medium ${surplusColor(Number(s.surplus))}`}>
-                    {formatBRL(Number(s.surplus))}
+                    {money.format(Number(s.surplus))}
                   </td>
                   <td className={`px-3 py-2 text-right tabular-nums ${surplusColor(Number(s.accumulated_surplus))}`}>
-                    {formatBRL(Number(s.accumulated_surplus))}
+                    {money.format(Number(s.accumulated_surplus))}
                   </td>
                   <td className="px-3 py-2 text-text-muted text-xs hidden md:table-cell">
                     {archived.toLocaleString('pt-BR', {

@@ -164,7 +164,7 @@ export function DietHistoryCalendarSection({
           </div>
 
           {selectedDayLogs.length === 0 ? (
-            <p className="text-xs text-text-muted">Nenhum registo neste dia.</p>
+            <p className="text-xs text-text-muted">Nenhum registro neste dia.</p>
           ) : (
             <Accordion
               key={selectedDate}

@@ -68,7 +68,7 @@ export function ExpenseReminderSettingsForm() {
         <h3 className="text-sm font-semibold text-text-primary mb-1">Lembretes de vencimento (despesas)</h3>
         <p className="text-xs text-text-muted mb-3">
           Para despesas com data ou dia de vencimento preenchidos, o Millennium Nexus envia um push no horário abaixo
-          (no teu fuso definido no perfil do portal) nos dias que escolheres antes do vencimento. Requer
+          (no seu fuso definido no perfil do portal) nos dias que você escolher antes do vencimento. Requer
           notificações push ativadas no perfil.
         </p>
         <fieldset className="space-y-2">
@@ -107,7 +107,7 @@ export function ExpenseReminderSettingsForm() {
         />
       </div>
       <Button type="submit" disabled={saving || isLoading}>
-        {saving ? 'A guardar…' : 'Guardar lembretes'}
+        {saving ? 'Salvando…' : 'Salvar lembretes'}
       </Button>
     </form>
   );

@@ -142,7 +142,7 @@ export default function NutritionNotificationsPage() {
           leftIcon={<Save size={16} />}
           className="self-end"
         >
-          Guardar preferências
+          Salvar preferências
         </Button>
       </div>
 

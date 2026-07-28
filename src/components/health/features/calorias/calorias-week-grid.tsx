@@ -373,7 +373,7 @@ export function CaloriasWeekGrid({
           </p>
           <p>
             <span className="font-medium">Dias antes de hoje</span> são clicáveis: adicione kcal ou desfaça o
-            último registo desse dia.
+            último registro desse dia.
           </p>
         </div>
       ) : null}

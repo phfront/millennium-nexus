@@ -15,10 +15,12 @@ import {
   SlidersHorizontal,
   History,
   Download,
+  PieChart,
 } from 'lucide-react';
 
 const NAV_LINKS = [
   { href: '/finance', icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
+  { href: '/finance/budget', icon: <PieChart size={18} />, label: 'Orçamento' },
   { href: '/finance/income', icon: <TrendingUp size={18} />, label: 'Receitas' },
   { href: '/finance/expenses', icon: <CreditCard size={18} />, label: 'Despesas' },
   { href: '/finance/one-time', icon: <Receipt size={18} />, label: 'Lançamentos' },

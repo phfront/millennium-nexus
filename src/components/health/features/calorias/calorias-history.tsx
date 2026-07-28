@@ -93,7 +93,7 @@ export function CaloriasHistory({
     setConfirmId(null);
     try {
       await removeLog(id);
-      toast.success('Registo removido', 'As kcal foram atualizadas.');
+      toast.success('Registro removido', 'As kcal foram atualizadas.');
     } catch {
       toast.error('Erro ao excluir', 'Tente novamente.');
     } finally {
@@ -172,8 +172,8 @@ export function CaloriasHistory({
 
       {dayRows.length === 0 && weekRows.length === 0 && monthRows.length === 0 ? (
         <div className="rounded-xl border border-border bg-surface-2 py-14 text-center text-sm text-text-muted">
-          <p className="font-medium text-text-primary">Sem registos neste período</p>
-          <p className="mt-1">Adicione kcal no ecrã principal ou alargue o período.</p>
+          <p className="font-medium text-text-primary">Sem registros neste período</p>
+          <p className="mt-1">Adicione kcal na tela principal ou alargue o período.</p>
           <Link href="/health/calorias" className="mt-4 inline-block text-sm text-brand-primary hover:underline">
             Voltar a Calorias
           </Link>
@@ -298,7 +298,7 @@ export function CaloriasHistory({
                                 type="button"
                                 onClick={() => setConfirmId(log.id)}
                                 className="rounded-lg p-1.5 text-text-muted transition hover:bg-danger/10 hover:text-danger"
-                                aria-label="Excluir registo"
+                                aria-label="Excluir registro"
                               >
                                 <Trash2 size={15} />
                               </button>
@@ -374,8 +374,8 @@ export function CaloriasHistory({
                     </p>
                     <p className="mt-1 text-xs text-text-muted">
                       {row.daysWithLogs === 1
-                        ? '1 dia com registos'
-                        : `${row.daysWithLogs} dias com registos`}
+                        ? '1 dia com registros'
+                        : `${row.daysWithLogs} dias com registros`}
                     </p>
                     <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-text-muted">
                       <span className="tabular-nums text-sm font-medium text-text-primary">

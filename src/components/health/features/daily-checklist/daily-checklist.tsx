@@ -92,7 +92,7 @@ export function DailyChecklist({
     }
     try {
       await clearDietLogsForDate(todayISO());
-      toast.success("Consumo de hoje", "Registos de dieta apagados.");
+      toast.success("Consumo de hoje", "Registros de dieta apagados.");
     } catch (e) {
       toast.error(
         "Erro",

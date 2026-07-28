@@ -6,7 +6,9 @@ import { Modal, Input, Button, Skeleton, useToast, ToggleStatusBadge } from '@ph
 import { useReceivables } from '@/hooks/finance/use-receivables';
 import { useUserStore } from '@/store/user-store';
 import { getLocalDateStr } from '@/lib/habits-goals/timezone';
-import { formatBRL, formatDate, formatMonth } from '@/lib/finance/format';
+import { formatDate, formatMonth } from '@/lib/finance/format';
+import { currencySymbol } from '@/lib/finance/currency';
+import { useMoneyFormat } from '@/hooks/finance/use-money-format';
 import { receivableIsFullyPaid, receivableOutstanding } from '@/lib/finance/finance';
 import type { Receivable } from '@/types/finance';
 
@@ -31,6 +33,7 @@ function ReceivableRow({
   onUpdatePaid: (id: string, paid: number) => Promise<void>;
   onDelete: (id: string) => void;
 }) {
+  const money = useMoneyFormat();
   const outstanding = receivableOutstanding(item);
   const full = receivableIsFullyPaid(item);
   const [paidLocal, setPaidLocal] = useState(() => String(item.amount_paid));
@@ -57,7 +60,7 @@ function ReceivableRow({
         <p className="text-sm text-text-primary">{item.description}</p>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-text-muted">
           <span>
-            Valor <span className="text-text-secondary font-medium">{formatBRL(item.amount)}</span>
+            Valor <span className="text-text-secondary font-medium">{money.format(item.amount)}</span>
           </span>
           <label className="inline-flex items-center gap-1.5 cursor-text">
             <span className="shrink-0">Pago</span>
@@ -75,7 +78,7 @@ function ReceivableRow({
             />
           </label>
           <span className={outstanding > 0 ? 'text-amber-400/90' : 'text-green-400/90'}>
-            Restante {formatBRL(outstanding)}
+            Restante {money.format(outstanding)}
           </span>
           {item.reference_month && <span>· {formatMonth(item.reference_month)}</span>}
           {full && item.paid_at && <span>· quitado em {formatDate(item.paid_at)}</span>}
@@ -109,6 +112,7 @@ function PersonCard({
   onUpdatePaid: (id: string, paid: number) => Promise<void>;
   onDelete: (id: string) => void;
 }) {
+  const money = useMoneyFormat();
   const [expanded, setExpanded] = useState(true);
   const pendingTotal = items.reduce((s, i) => s + receivableOutstanding(i), 0);
   const total = items.reduce((s, i) => s + i.amount, 0);
@@ -127,7 +131,7 @@ function PersonCard({
           <div className="text-left">
             <p className="text-sm font-semibold text-text-primary">{person}</p>
             <p className="text-xs text-text-muted">
-              {formatBRL(pendingTotal)} pendente · {formatBRL(total)} total
+              {money.format(pendingTotal)} pendente · {money.format(total)} total
             </p>
           </div>
         </div>
@@ -163,6 +167,7 @@ export function ReceivablesList() {
     getByPerson,
     getPendingTotal,
   } = useReceivables();
+  const money = useMoneyFormat();
   const user = useUserStore((s) => s.user);
   const { toast } = useToast();
   const [filter, setFilter] = useState<Filter>('all');
@@ -240,7 +245,7 @@ export function ReceivablesList() {
       <div className="flex items-center justify-between bg-surface-2 border border-border rounded-xl p-4">
         <div>
           <p className="text-xs text-text-muted mb-0.5">Total pendente</p>
-          <p className="text-2xl font-bold text-text-primary">{formatBRL(totalPending)}</p>
+          <p className="text-2xl font-bold text-text-primary">{money.format(totalPending)}</p>
         </div>
         <Button onClick={() => setShowModal(true)} leftIcon={<Plus size={14} />}>
           Nova Cobrança
@@ -308,7 +313,7 @@ export function ReceivablesList() {
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
           <Input
-            label="Valor total (R$)"
+            label={`Valor total (${currencySymbol(money.currency)})`}
             type="number"
             step="0.01"
             placeholder="0,00"
@@ -316,7 +321,7 @@ export function ReceivablesList() {
             onChange={(e) => setForm({ ...form, amount: e.target.value })}
           />
           <Input
-            label="Já pago (R$) — opcional"
+            label={`Já pago (${currencySymbol(money.currency)}) — opcional`}
             type="number"
             step="0.01"
             min={0}
@@ -325,7 +330,7 @@ export function ReceivablesList() {
             onChange={(e) => setForm({ ...form, amount_paid: e.target.value })}
           />
           <p className="text-[10px] text-text-muted -mt-1">
-            Podes ir atualizando o “Pago” na lista até quitar o total.
+            Você pode ir atualizando o “Pago” na lista até quitar o total.
           </p>
           <div>
             <label className="text-xs font-medium text-text-secondary block mb-1">Mês de referência (opcional)</label>

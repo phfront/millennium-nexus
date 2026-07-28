@@ -39,7 +39,7 @@ export type MonthDetailData = {
   oneTime: SnapshotOneTimeRow[];
   totalIncome: number;
   totalExpenses: number;
-  /** Só despesas pontuais (alinhado à coluna «Pontuais» do histórico). */
+  /** Só despesas pontuais (alinhado à coluna “Pontuais” do histórico). */
   totalOneTimeExpense: number;
   /** Só receitas pontuais. */
   totalOneTimeIncome: number;

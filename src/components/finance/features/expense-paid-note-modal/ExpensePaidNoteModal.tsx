@@ -49,7 +49,7 @@ export function ExpensePaidNoteModal({
             Cancelar
           </Button>
           <Button type="button" variant="primary" onClick={() => void handleConfirm()} disabled={submitting}>
-            {submitting ? 'A guardar…' : 'Confirmar'}
+            {submitting ? 'Salvando…' : 'Confirmar'}
           </Button>
         </div>
       </>

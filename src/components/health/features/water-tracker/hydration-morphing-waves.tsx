@@ -29,7 +29,7 @@ function buildKeyframes(name: string, p0: string, p25: string, p50: string, p75:
 }`;
 }
 
-/** Recorte vertical do viewBox: menos altura em unidades SVG = ondas mais subtis no ecrã. */
+/** Recorte vertical do viewBox: menos altura em unidades SVG = ondas mais subtis na tela. */
 const VB_X = 0;
 const VB_Y = 248;
 const VB_W = 1440;

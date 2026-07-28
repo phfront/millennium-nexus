@@ -23,6 +23,21 @@ body {
   }
 }
 
+/* Baldes do Orçamento (60/30/10). Hues categóricos escolhidos por separação
+   sob daltonismo e contraste contra surface-2 nos dois temas — não são cores
+   de estado, por isso não saem dos tokens success/warning/danger. */
+:root {
+  --finance-budget-essential: #2a78d6;
+  --finance-budget-optional: #eb6834;
+  --finance-budget-investment: #1baf7a;
+}
+
+.dark {
+  --finance-budget-essential: #3987e5;
+  --finance-budget-optional: #d95926;
+  --finance-budget-investment: #199e70;
+}
+
 @layer utilities {
   .safe-area-inset-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);

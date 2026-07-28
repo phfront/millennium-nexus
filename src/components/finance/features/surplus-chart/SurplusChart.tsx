@@ -13,7 +13,9 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { formatMonth, formatMonthChartAxisShort, formatBRL } from '@/lib/finance/format';
+import { formatMonth, formatMonthChartAxisShort } from '@/lib/finance/format';
+import { formatMoney } from '@/lib/finance/currency';
+import { useMoneyFormat } from '@/hooks/finance/use-money-format';
 import {
   FINANCE_OVERVIEW_CHART_RANGE_LABELS,
   filterSummariesForChartRange,
@@ -89,9 +91,12 @@ function ChartRangePicker({
 function OverviewTooltip({
   active,
   payload,
+  currency,
 }: {
   active?: boolean;
   payload?: Array<{ value: number; name: string; dataKey: string; color?: string; payload: ChartDatum }>;
+  /** Recharts injeta as props do tooltip; a moeda vem do `content={<OverviewTooltip …/>}`. */
+  currency?: string;
 }) {
   if (!active || !payload?.length) return null;
   const row = payload[0].payload;
@@ -111,7 +116,7 @@ function OverviewTooltip({
               : 'text-text-secondary';
         return (
           <p key={String(p.dataKey)} className={colorClass} style={p.color ? { color: p.color } : undefined}>
-            <span className="text-text-muted">{name}:</span> {formatBRL(p.value)}
+            <span className="text-text-muted">{name}:</span> {formatMoney(p.value, currency)}
           </p>
         );
       })}
@@ -122,6 +127,7 @@ function OverviewTooltip({
 export function SurplusChart({ summaries }: SurplusChartProps) {
   const [range, setRange] = useState<FinanceOverviewChartRange>('12m');
   const narrow = useChartMobileLayout();
+  const money = useMoneyFormat();
 
   const filtered = useMemo(
     () => filterSummariesForChartRange(summaries, range),
@@ -168,7 +174,7 @@ export function SurplusChart({ summaries }: SurplusChartProps) {
         <p className="text-xs text-text-muted">
           Barras: receitas, despesas (fixas + pontuais) e sobra do mês. Linha: saldo acumulado (eixo à direita)
           — a partir do mês civil corrente, a linha ignora meses anteriores; antes disso usa o total histórico.
-          Em «6 / 12 / 24 m à frente» mostra-se o mês corrente e os meses seguintes (não o passado).
+          Em “6 / 12 / 24 m à frente” mostra-se o mês corrente e os meses seguintes (não o passado).
         </p>
         <ChartRangePicker range={range} setRange={setRange} />
       </div>
@@ -224,7 +230,7 @@ export function SurplusChart({ summaries }: SurplusChartProps) {
             width={narrow ? 36 : 44}
             tickFormatter={(v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
           />
-          <Tooltip content={<OverviewTooltip />} />
+          <Tooltip content={<OverviewTooltip currency={money.currency} />} />
           <Legend
             wrapperStyle={{
               fontSize: narrow ? 10 : 11,

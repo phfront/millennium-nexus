@@ -15,11 +15,18 @@ import {
 } from '@phfront/millennium-ui';
 import type { MonthYearValue } from '@phfront/millennium-ui';
 import { useOneTime } from '@/hooks/finance/use-one-time';
-import { formatBRL, formatMonth, parseBRLInput } from '@/lib/finance/format';
+import { formatMonth } from '@/lib/finance/format';
+import { currencySymbol } from '@/lib/finance/currency';
+import { useMoneyFormat } from '@/hooks/finance/use-money-format';
 import { buildSpreadsheetMonthList, normalizeExpenseMonthKey, toMonthDate } from '@/lib/finance/finance';
 import { useFinanceSpreadsheetSettings } from '@/contexts/FinanceSpreadsheetSettingsContext';
 import { ExpensePaidNoteModal } from '@/components/finance/features/expense-paid-note-modal/ExpensePaidNoteModal';
-import type { OneTimeEntry } from '@/types/finance';
+import {
+  BUDGET_CLASSES,
+  BUDGET_CLASS_LABEL,
+  type BudgetClass,
+  type OneTimeEntry,
+} from '@/types/finance';
 
 const FLOW_SELECT_CLASS =
   'max-w-[108px] px-1.5 py-1 rounded-md bg-surface-3 border border-border text-[11px] text-text-primary outline-none focus:border-brand-primary';
@@ -53,6 +60,7 @@ function ymdToDate(ymd: string | null | undefined): Date | undefined {
 }
 
 export function OneTimeSheet() {
+  const money = useMoneyFormat();
   const { monthsForward } = useFinanceSpreadsheetSettings();
   const {
     expenses,
@@ -94,6 +102,19 @@ export function OneTimeSheet() {
       await upsertExpense(name, month, value, id, { flow });
     } catch {
       toast.error('Erro ao salvar');
+    }
+  }
+
+  async function handleBudgetClassChange(exp: OneTimeEntry, budgetClass: BudgetClass | null) {
+    if (budgetClass === exp.budget_class) return;
+    try {
+      await upsertExpense(exp.name, exp.month, exp.amount, exp.id, {
+        due_date: exp.due_date,
+        flow: exp.flow,
+        budget_class: budgetClass,
+      });
+    } catch {
+      toast.error('Erro ao classificar lançamento');
     }
   }
 
@@ -251,7 +272,7 @@ export function OneTimeSheet() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full text-xs border-collapse min-w-[720px]">
+          <table className="w-full text-xs border-collapse min-w-[860px]">
             <thead>
               <tr className="bg-surface-3">
                 <th className="sticky left-0 z-10 bg-surface-3 text-left px-3 py-2 font-medium text-text-muted border-b border-border whitespace-nowrap w-[1%]">
@@ -262,6 +283,9 @@ export function OneTimeSheet() {
                 </th>
                 <th className="text-left px-3 py-2 font-medium text-text-muted border-b border-border w-[88px]">
                   Tipo
+                </th>
+                <th className="text-left px-2 py-2 font-medium text-text-muted border-b border-border w-[124px]">
+                  Orçamento
                 </th>
                 <th className="text-left px-3 py-2 font-medium text-text-muted border-b border-border">
                   Descrição
@@ -292,10 +316,10 @@ export function OneTimeSheet() {
                         {(expTot > 0 || incTot > 0) && (
                           <div className="text-[10px] font-normal mt-1 space-y-0.5">
                             {expTot > 0 && (
-                              <div className="text-red-400/95">−{formatBRL(expTot)}</div>
+                              <div className="text-red-400/95">−{money.format(expTot)}</div>
                             )}
                             {incTot > 0 && (
-                              <div className="text-green-500/95">+{formatBRL(incTot)}</div>
+                              <div className="text-green-500/95">+{money.format(incTot)}</div>
                             )}
                           </div>
                         )}
@@ -309,10 +333,10 @@ export function OneTimeSheet() {
                         {expTot > 0 || incTot > 0 ? (
                           <div className="flex flex-col items-end gap-0.5 text-[11px]">
                             {expTot > 0 && (
-                              <span className="text-red-400 tabular-nums">{formatBRL(expTot)}</span>
+                              <span className="text-red-400 tabular-nums">{money.format(expTot)}</span>
                             )}
                             {incTot > 0 && (
-                              <span className="text-green-500 tabular-nums">{formatBRL(incTot)}</span>
+                              <span className="text-green-500 tabular-nums">{money.format(incTot)}</span>
                             )}
                           </div>
                         ) : (
@@ -332,6 +356,32 @@ export function OneTimeSheet() {
                         <option value="expense">Despesa</option>
                         <option value="income">Receita</option>
                       </select>
+                    </td>
+                    <td className="px-2 py-1.5 align-middle">
+                      {expense.flow === 'income' ? (
+                        <span className="text-[11px] text-text-muted">—</span>
+                      ) : (
+                        <select
+                          aria-label={`Balde do orçamento de ${expense.name}`}
+                          className={`${FLOW_SELECT_CLASS} ${
+                            expense.budget_class ? '' : 'border-warning-border text-text-muted'
+                          }`}
+                          value={expense.budget_class ?? ''}
+                          onChange={(e) =>
+                            void handleBudgetClassChange(
+                              expense,
+                              (e.target.value as BudgetClass) || null,
+                            )
+                          }
+                        >
+                          <option value="">A classificar</option>
+                          {BUDGET_CLASSES.map((c) => (
+                            <option key={c} value={c}>
+                              {BUDGET_CLASS_LABEL[c]}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </td>
                     <td className="px-3 py-1.5 text-text-primary">{expense.name}</td>
                     <td className="px-2 py-1 align-middle whitespace-nowrap min-w-[148px]">
@@ -379,8 +429,8 @@ export function OneTimeSheet() {
                             onSave={(v) =>
                               handleSave(expense.id, expense.name, expense.month, v, expense.flow)
                             }
-                            formatDisplay={formatBRL}
-                            parseInput={parseBRLInput}
+                            formatDisplay={money.format}
+                            parseInput={money.parse}
                             highlightVariant="success"
                             highlightActive={expense.is_paid}
                             className={`rounded-md border border-border/40 px-1.5 py-1 text-xs leading-normal tabular-nums ${
@@ -490,7 +540,7 @@ export function OneTimeSheet() {
             clearable={false}
           />
           <Input
-            label="Valor (R$)"
+            label={`Valor (${currencySymbol(money.currency)})`}
             type="number"
             step="0.01"
             placeholder="0,00"

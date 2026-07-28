@@ -3,6 +3,8 @@ import { PageHeader } from '@phfront/millennium-ui';
 import { getUser } from '@/lib/auth';
 import { SpreadsheetSettingsForm } from '@/components/finance/features/settings/SpreadsheetSettingsForm';
 import { ExpenseReminderSettingsForm } from '@/components/finance/features/settings/ExpenseReminderSettingsForm';
+import { CurrencySettingsForm } from '@/components/finance/features/settings/CurrencySettingsForm';
+import { BudgetTargetsForm } from '@/components/finance/features/settings/BudgetTargetsForm';
 
 export default async function FinanceSettingsPage() {
   const user = await getUser();
@@ -14,6 +16,8 @@ export default async function FinanceSettingsPage() {
         title="Configurações"
         subtitle="Preferências do módulo Finanças que se aplicam a todas as planilhas e ao seletor de mês do dashboard."
       />
+      <CurrencySettingsForm />
+      <BudgetTargetsForm />
       <SpreadsheetSettingsForm />
       <ExpenseReminderSettingsForm />
     </div>

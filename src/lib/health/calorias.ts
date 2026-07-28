@@ -181,7 +181,7 @@ export type CaloriasHistoryDayRow = {
   effectiveTarget: number;
 };
 
-/** Agrupa por dia (só dias com registos) dentro da janela visível; ordenação do mais recente. */
+/** Agrupa por dia (só dias com registros) dentro da janela visível; ordenação do mais recente. */
 export function buildCaloriasHistoryDayRows(
   fetchedLogs: CaloriasLog[],
   settings: Pick<CaloriasSettings, 'daily_target_kcal' | 'active_days'>,
@@ -213,7 +213,7 @@ export type CaloriasHistoryWeekRow = {
   weeklyTarget: number;
 };
 
-/** Semanas ISO (seg–dom) que intersectam a janela e têm pelo menos 1 registo. */
+/** Semanas ISO (seg–dom) que intersectam a janela e têm pelo menos 1 registro. */
 export function buildCaloriasHistoryWeekRows(
   fetchedLogs: CaloriasLog[],
   settings: Pick<CaloriasSettings, 'daily_target_kcal' | 'active_days'>,
@@ -257,7 +257,7 @@ function daysInCalendarMonth(monthKey: string): number {
   return new Date(y, m, 0).getDate();
 }
 
-/** Agrupa por mês civil (YYYY-MM) dentro da janela; só meses com registos. */
+/** Agrupa por mês civil (YYYY-MM) dentro da janela; só meses com registros. */
 export function buildCaloriasHistoryMonthRows(
   fetchedLogs: CaloriasLog[],
   settings: Pick<CaloriasSettings, 'daily_target_kcal' | 'active_days'>,

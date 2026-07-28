@@ -7,7 +7,7 @@ const TABLES = [
 ] as const;
 
 /**
- * Apaga linhas do utilizador com `month` estritamente posterior ao último mês do horizonte
+ * Apaga linhas do usuário com `month` estritamente posterior ao último mês do horizonte
  * (receitas, despesas fixas e pontuais).
  */
 export async function pruneFinanceEntriesAfterMonth(
