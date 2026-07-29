@@ -176,6 +176,14 @@ export type Subscription = {
   billing_cycle: 'monthly' | 'yearly';
   renewal_day: number | null;
   is_active: boolean;
+  /**
+   * Item-cartão (`ExpenseItem.is_card`) em que esta assinatura é cobrada.
+   * Ao contrário das despesas, aqui o ponteiro é só organizacional: as
+   * assinaturas não entram no total do mês nem no orçamento, então apontar
+   * para um cartão não muda nenhuma conta — serve para saber o que compõe
+   * cada fatura. `null` = fora de cartão ou por definir.
+   */
+  paid_with_item_id: string | null;
   created_at: string;
 };
 
@@ -190,6 +198,29 @@ export type Receivable = {
   reference_month: string | null;
   is_paid: boolean;
   paid_at: string | null;
+  /** Regra recorrente que gerou esta cobrança; null = avulsa. */
+  series_id: string | null;
+  created_at: string;
+};
+
+/**
+ * Regra de cobrança recorrente. Não é cobrança: as cobranças são linhas de
+ * `Receivable` geradas a partir daqui, uma por mês, até o mês corrente —
+ * nunca futuras, porque o que ainda não venceu não é dívida.
+ */
+export type ReceivableSeries = {
+  id: string;
+  user_id: string;
+  person_name: string;
+  description: string;
+  amount: number;
+  /** Dia em que costuma cair (1–31); informativo, não gera vencimento. */
+  due_day: number | null;
+  /** Primeiro mês cobrado ('YYYY-MM-DD', dia 01). */
+  start_month: string;
+  /** Último mês cobrado; null = sem fim previsto. */
+  end_month: string | null;
+  is_active: boolean;
   created_at: string;
 };
 
