@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 import Link from 'next/link';
 import {
   TrendingUp,
@@ -39,6 +39,10 @@ import {
   MonthBreakdownModal,
   type BreakdownSection,
 } from '@/components/finance/features/monthly-dashboard/MonthBreakdownModal';
+import {
+  SurplusAllocationModal,
+  type InvestmentTarget,
+} from '@/components/finance/features/monthly-dashboard/SurplusAllocationModal';
 import { useFinanceSpreadsheetSettings } from '@/contexts/FinanceSpreadsheetSettingsContext';
 import { formatMonthLabel } from '@/lib/finance/format';
 import { useMoneyFormat } from '@/hooks/finance/use-money-format';
@@ -57,6 +61,7 @@ export function MonthlyDashboard() {
   const [month, setMonth] = useInitialFinanceMonth(maxPlanningMonth);
   const [paymentsModalOpen, setPaymentsModalOpen] = useState(false);
   const [breakdownKind, setBreakdownKind] = useState<'income' | 'expense' | null>(null);
+  const [surplusModalOpen, setSurplusModalOpen] = useState(false);
   const [completeModalOpen, setCompleteModalOpen] = useState(false);
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
   const [currentMonthConcluded, setCurrentMonthConcluded] = useState(false);
@@ -213,6 +218,37 @@ export function MonthlyDashboard() {
     summary && displayedAccumulated >= 0 ? 'positive' : 'negative';
   const pendingPayments =
     progress.total > 0 ? Math.max(0, progress.total - progress.paid) : 0;
+
+  const surplus = Number(summary?.surplus ?? 0);
+
+  /**
+   * Destinos possíveis para a sobra. Linhas pagas dentro de outra ficam de
+   * fora de propósito: elas decompõem uma fatura em vez de somar ao mês, logo
+   * aportar nelas não faria a sobra descer — o botão prometeria o que não faz.
+   */
+  const investmentTargets: InvestmentTarget[] = activeItems
+    .filter((i) => i.budget_class === 'investment' && !i.paid_with_item_id)
+    .map((i) => ({
+      id: i.id,
+      name: i.name,
+      currentAmount: getEffectiveExpenseAmount(i.id, month),
+    }));
+
+  const monthIsArchived = isCurrentMonth && currentMonthConcluded;
+  const canAllocateSurplus = !isLoading && surplus > 0 && !monthIsArchived;
+
+  /** Soma o aporte ao que a linha já tem no mês; a sobra desce o mesmo tanto. */
+  async function handleAllocateSurplus(itemId: string, amount: number) {
+    const current = getEffectiveExpenseAmount(itemId, month);
+    try {
+      await upsertEntry(itemId, month, current + amount);
+      await refetchMonthlySummary();
+      toast.success(`${money.format(amount)} guardados em investimento.`);
+    } catch {
+      toast.error('Não foi possível guardar a sobra.');
+      throw new Error('allocate-surplus-failed');
+    }
+  }
 
   const refreshMonthConcluded = useCallback(async () => {
     if (!user?.id || !isCurrentMonth) {
@@ -407,6 +443,15 @@ export function MonthlyDashboard() {
         </>
       </Modal>
 
+      <SurplusAllocationModal
+        isOpen={surplusModalOpen}
+        onClose={() => setSurplusModalOpen(false)}
+        monthLabel={formatMonthLabel(month)}
+        surplus={surplus}
+        targets={investmentTargets}
+        onApply={handleAllocateSurplus}
+      />
+
       {breakdownKind && (
         <MonthBreakdownModal
           isOpen
@@ -460,11 +505,28 @@ export function MonthlyDashboard() {
         />
         <StatCard
           label="Sobra"
-          value={money.format(summary?.surplus ?? 0)}
+          value={money.format(surplus)}
           isLoading={isLoading}
           valueTone={surplusTone}
           valueSize="md"
           icon={<Wallet size={16} />}
+          sub={canAllocateSurplus ? 'toque para guardar' : undefined}
+          {...(canAllocateSurplus
+            ? {
+                role: 'button' as const,
+                tabIndex: 0,
+                'aria-label': `Guardar a sobra de ${formatMonthLabel(month)} num investimento`,
+                className:
+                  'cursor-pointer transition-colors hover:border-brand-primary/60 hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-primary',
+                onClick: () => setSurplusModalOpen(true),
+                onKeyDown: (e: KeyboardEvent) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSurplusModalOpen(true);
+                  }
+                },
+              }
+            : {})}
         />
         <StatCard
           label="Acumulado"

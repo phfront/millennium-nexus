@@ -1541,11 +1541,12 @@ export function ExpensesSheet({
                 />
                 <span>
                   <span className="font-medium text-text-primary">
-                    Esta linha é a fatura de um cartão
+                    Esta linha agrupa outras despesas
                   </span>
                   <span className="block text-xs text-text-muted mt-0.5">
-                    O valor que você lança em cada mês passa a ser o total da fatura, e outras despesas
-                    podem declarar-se pagas dentro dela.
+                    O valor que você lança em cada mês passa a ser o total do grupo (a fatura de um
+                    cartão, o aluguel que embute condomínio, o plano de saúde da família), e outras
+                    despesas podem declarar-se pagas dentro dela.
                   </span>
                 </span>
               </label>
@@ -1555,7 +1556,7 @@ export function ExpensesSheet({
                     className="text-[10px] font-medium text-text-muted uppercase tracking-wide block mb-1"
                     htmlFor="expense-paid-with"
                   >
-                    Pago no cartão (opcional)
+                    Pago dentro de (opcional)
                   </label>
                   <select
                     id="expense-paid-with"
@@ -1564,7 +1565,7 @@ export function ExpensesSheet({
                     disabled={selectableCardItems.length === 0}
                     className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-transparent text-sm text-text-primary outline-none ring-1 ring-inset ring-border focus:ring-brand-primary disabled:opacity-60"
                   >
-                    <option value="">Fora de cartão (débito, pix, dinheiro)</option>
+                    <option value="">Não agrupada (soma direto no mês)</option>
                     {selectableCardItems.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -1573,9 +1574,9 @@ export function ExpensesSheet({
                   </select>
                   <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
                     {selectableCardItems.length === 0
-                      ? 'Você ainda não tem nenhuma linha marcada como fatura de cartão. Marque a despesa do cartão (ex.: “Itau Black”) com a opção acima e ela passa a aparecer aqui.'
+                      ? 'Você ainda não tem nenhuma linha marcada como agrupadora. Marque a despesa que reúne as outras (ex.: “Itau Black”) com a opção acima e ela passa a aparecer aqui.'
                       : formPaidWithItemId
-                        ? 'Este item deixa de somar ao total do mês: passa a decompor a fatura desse cartão. O que sobrar da fatura fica no balde que deste ao cartão.'
+                        ? 'Este item deixa de somar ao total do mês: passa a decompor o total dessa linha. O que sobrar dela fica no balde que você deu a ela.'
                         : 'Some ao total do mês por si, como sempre.'}
                   </p>
                 </div>
