@@ -37,8 +37,26 @@ export type IncomeEntry = {
   source_id: string;
   month: string; // 'YYYY-MM-DD' — sempre dia 01
   amount: number;
+  /**
+   * Cotação travada: quantas unidades de `fx_quote_currency` vale 1 unidade da
+   * moeda deste lançamento. `null` = ainda não recebido, converte pela cotação
+   * viva (e portanto ainda oscila). Costuma ser derivada do valor que caiu na
+   * conta, por isso é o câmbio efetivo — já com spread e tarifas.
+   */
+  fx_rate: number | null;
+  /** Lado de destino do par travado; sem ele o número não significa nada. */
+  fx_quote_currency: string | null;
+  /** Quando foi travada — é o que marca "esta receita já entrou". */
+  fx_locked_at: string | null;
   created_at: string;
 };
+
+/** true quando o lançamento já tem cotação travada (ou seja, já foi recebido). */
+export function isIncomeEntryFxLocked(
+  entry: Pick<IncomeEntry, 'fx_rate' | 'fx_quote_currency'> | null | undefined,
+): boolean {
+  return !!entry?.fx_rate && !!entry.fx_quote_currency;
+}
 
 export type ExpenseCategory = {
   id: string;

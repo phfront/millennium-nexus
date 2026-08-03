@@ -6,6 +6,8 @@
  * - Fontes de renda com `currency` própria guardam o valor na moeda delas; a
  *   conversão para a moeda de exibição usa a cotação atual (ver
  *   `use-exchange-rates`), portanto o valor apresentado acompanha o câmbio.
+ * - …até o lançamento ser recebido: aí a cotação daquele mês é travada na
+ *   linha (`fx_rate`) e o valor deixa de oscilar. Ver `convertMoneyAtLockedRate`.
  */
 
 export const DEFAULT_DISPLAY_CURRENCY = 'BRL';
@@ -101,6 +103,48 @@ export function convertMoney(
   const toRate = ratesPerUsd?.[dst];
   if (!fromRate || !toRate) return amount;
   return (amount * toRate) / fromRate;
+}
+
+/**
+ * Como `convertMoney`, mas honrando a cotação travada num lançamento.
+ *
+ * Espelha `finance_income_entry_factor` na BD — se divergir, a planilha e os
+ * totais passam a dizer números diferentes sobre o mesmo mês. Sem cotação
+ * travada cai em `convertMoney` (cotação viva, valor ainda oscila). Travada
+ * noutro destino que não o atual, encadeia: travado até `lockedQuote`, vivo
+ * daí em diante — é o que impede uma troca de moeda de exibição de reler
+ * "1 GBP = 6,7491" como se fosse em dólares.
+ */
+export function convertMoneyAtLockedRate(
+  amount: number,
+  from: string | null | undefined,
+  to: string,
+  ratesPerUsd: Record<string, number> | null | undefined,
+  lockedRate: number | null | undefined,
+  lockedQuote: string | null | undefined,
+): number {
+  const src = normalizeCurrencyCode(from, to);
+  const dst = normalizeCurrencyCode(to);
+  if (src === dst) return amount;
+  if (!lockedRate || lockedRate <= 0 || !lockedQuote) {
+    return convertMoney(amount, src, dst, ratesPerUsd);
+  }
+  const quote = normalizeCurrencyCode(lockedQuote, dst);
+  const atQuote = amount * lockedRate;
+  return quote === dst ? atQuote : convertMoney(atQuote, quote, dst, ratesPerUsd);
+}
+
+/**
+ * Cotação efetiva a partir do que realmente caiu na conta: `recebido / bruto`.
+ * `null` quando não dá para dividir — travar com base num valor bruto zero
+ * inventaria uma cotação infinita.
+ */
+export function deriveRateFromReceived(
+  nativeAmount: number,
+  receivedAmount: number,
+): number | null {
+  if (!(nativeAmount > 0) || !(receivedAmount > 0)) return null;
+  return receivedAmount / nativeAmount;
 }
 
 /** Cotação de 1 unidade de `from` em `to` (para mostrar "1 USD = 5,42 BRL"). */

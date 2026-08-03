@@ -12,6 +12,20 @@ function normalizeMonthKey(m: string): string {
   return m.length >= 10 ? m.slice(0, 10) : m;
 }
 
+/** PostgREST devolve `numeric` como string — `fx_rate` inclusive. */
+function normalizeEntry(row: IncomeEntry): IncomeEntry {
+  const rate = row.fx_rate == null ? null : Number(row.fx_rate);
+  const quote = normalizeOptionalCurrencyCode(row.fx_quote_currency);
+  const locked = rate != null && Number.isFinite(rate) && rate > 0 && !!quote;
+  return {
+    ...row,
+    amount: Number(row.amount ?? 0),
+    fx_rate: locked ? rate : null,
+    fx_quote_currency: locked ? quote : null,
+    fx_locked_at: locked ? (row.fx_locked_at ?? null) : null,
+  };
+}
+
 /** PostgREST devolve numéricos como string e a moeda pode vir suja/ausente. */
 function normalizeSource(row: IncomeSource): IncomeSource {
   const currency = normalizeOptionalCurrencyCode(row.currency);
@@ -47,7 +61,7 @@ export function useIncome() {
     ]);
     const rawSources = (srcData ?? []) as IncomeSource[];
     setSources(rawSources.map(normalizeSource));
-    setEntries((entData ?? []) as IncomeEntry[]);
+    setEntries(((entData ?? []) as IncomeEntry[]).map(normalizeEntry));
     setIsLoading(false);
   }, [user]);
 
@@ -100,7 +114,9 @@ export function useIncome() {
       .select()
       .single();
     if (error) throw new Error(error.message);
-    const updated = data as IncomeEntry;
+    // O upsert só lista `amount`, por isso uma cotação já travada sobrevive à
+    // edição do valor — e é o que se quer: a taxa é por unidade, não total.
+    const updated = normalizeEntry(data as IncomeEntry);
     setEntries((prev) => {
       const idx = prev.findIndex((e) => e.source_id === sourceId && e.month === month);
       if (idx >= 0) {
@@ -131,6 +147,75 @@ export function useIncome() {
       await fetchAll();
     },
     [user?.id, fetchAll],
+  );
+
+  /**
+   * Trava a cotação de um lançamento — o passo de "já recebi".
+   *
+   * A partir daqui aquele mês para de oscilar: a view e o arquivo passam a usar
+   * `fx_rate` em vez da cotação viva. `rate` é quanto vale 1 unidade da moeda do
+   * lançamento em `quoteCurrency`; derivada do valor recebido, já traz o spread
+   * do banco embutido. Cria a linha se ela ainda não existir (uma célula que só
+   * mostra o padrão mensal ainda não tem linha na BD).
+   */
+  const lockEntryFx = useCallback(
+    async (sourceId: string, month: string, amount: number, rate: number, quoteCurrency: string) => {
+      if (!user?.id) return;
+      if (!(rate > 0)) throw new Error('Cotação inválida.');
+      const code = normalizeOptionalCurrencyCode(quoteCurrency);
+      if (!code) throw new Error('Moeda de destino inválida.');
+
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('finance_income_entries')
+        .upsert(
+          {
+            user_id: user.id,
+            source_id: sourceId,
+            month: normalizeMonthKey(month),
+            amount,
+            fx_rate: rate,
+            fx_quote_currency: code,
+            fx_locked_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,source_id,month' },
+        )
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      const updated = normalizeEntry(data as IncomeEntry);
+      setEntries((prev) => {
+        const idx = prev.findIndex((e) => e.id === updated.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = updated;
+          return copy;
+        }
+        return [updated, ...prev];
+      });
+      return updated;
+    },
+    [user?.id],
+  );
+
+  /** Devolve o lançamento à cotação viva (destrava). */
+  const unlockEntryFx = useCallback(
+    async (entryId: string) => {
+      if (!user?.id) return;
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('finance_income_entries')
+        .update({ fx_rate: null, fx_quote_currency: null, fx_locked_at: null })
+        .eq('id', entryId)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      const updated = normalizeEntry(data as IncomeEntry);
+      setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+      return updated;
+    },
+    [user?.id],
   );
 
   /** `currency` null = a fonte lança na moeda padrão do usuário. */
@@ -195,7 +280,15 @@ export function useIncome() {
 
         const rescaled = (data ?? []).map((row) => {
           const entry = row as IncomeEntry;
-          return { ...entry, amount: Math.round(Number(entry.amount ?? 0) * safeFactor * 100) / 100 };
+          const rate = entry.fx_rate == null ? null : Number(entry.fx_rate);
+          return {
+            ...entry,
+            amount: Math.round(Number(entry.amount ?? 0) * safeFactor * 100) / 100,
+            // A cotação travada é por unidade da moeda antiga; reescalar o valor
+            // sem a reescalar mudaria o que o mês valeu. Dividir por `factor`
+            // mantém o valor em moeda de exibição exatamente onde estava.
+            fx_rate: rate && rate > 0 ? rate / safeFactor : entry.fx_rate,
+          };
         });
         if (rescaled.length > 0) {
           const { error } = await supabase
@@ -278,6 +371,8 @@ export function useIncome() {
     addSource,
     updateSource,
     changeSourceCurrency,
+    lockEntryFx,
+    unlockEntryFx,
     getEntry,
     getMonthlyTotal,
     ensureDefaultIncomeEntriesForMonths,

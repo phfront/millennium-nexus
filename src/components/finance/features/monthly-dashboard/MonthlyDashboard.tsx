@@ -102,7 +102,7 @@ export function MonthlyDashboard() {
     entries: incomeEntries,
     isLoading: loadingIncome,
   } = useIncome();
-  const { convert } = useCurrencyConversion();
+  const { convertLocked } = useCurrencyConversion();
   const { monthlyTotal: subsTotal, isLoading: loadingSubs } = useSubscriptions();
   const { getPendingTotal, isLoading: loadingRec } = useReceivables();
 
@@ -134,7 +134,9 @@ export function MonthlyDashboard() {
         return {
           key: e.id,
           label: source?.name ?? 'Fonte removida',
-          amount: convert(raw, entryCurrency),
+          // Cotação travada quando o mês já foi recebido — é o que mantém este
+          // detalhe igual ao número que a view soma no cartão.
+          amount: convertLocked(raw, entryCurrency, e.fx_rate, e.fx_quote_currency),
           nativeAmount: isForeign ? raw : undefined,
           nativeCurrency: isForeign ? entryCurrency : undefined,
         };
