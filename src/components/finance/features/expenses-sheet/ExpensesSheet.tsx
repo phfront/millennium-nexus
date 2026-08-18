@@ -76,7 +76,11 @@ const SPREADSHEET_DATA_COL = 'min-w-40 whitespace-nowrap px-2';
  */
 const PAID_BLOCK_CLASS =
   'flex h-full flex-col justify-center bg-green-600/30 ' +
-  'ring-1 ring-inset ring-green-400/45 [&>button]:text-green-100';
+  'ring-1 ring-inset ring-green-400/45 [&>button]:text-green-100 ' +
+  /* O próprio InlineAmountCell aplica `hover:bg-surface-3` sempre que o
+     realce dele está desligado — e aqui ele está, porque o verde é nosso.
+     Só um seletor mais específico apaga esse cinza por cima do bloco. */
+  '[&>button:hover]:bg-transparent';
 
 function hexToRgba(hex: string, alpha: number): string {
   const t = hex.trim().replace('#', '');
