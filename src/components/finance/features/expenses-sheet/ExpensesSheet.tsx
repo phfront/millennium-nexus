@@ -69,11 +69,14 @@ const SPREADSHEET_DATA_COL = 'min-w-40 whitespace-nowrap px-2';
  * formas de realce serem indistinguíveis na planilha.
  *
  * Canto reto de propósito: a planilha é uma grade de células quadradas, e um
- * bloco arredondado desse tamanho salta da linha.
+ * bloco arredondado desse tamanho salta da linha. Pelo mesmo motivo o bloco
+ * ocupa a célula toda (`h-full`): numa linha em que outro cartão tem a segunda
+ * linha, um verde da altura só do valor ficaria menor que os vizinhos. O
+ * `justify-center` mantém o valor onde o alinhamento da tabela já o punha.
  */
 const PAID_BLOCK_CLASS =
-  'bg-green-600/30 ring-1 ring-inset ring-green-400/45 ' +
-  '[&>button]:text-green-100 [&>button]:hover:bg-green-600/10';
+  'flex h-full flex-col justify-center bg-green-600/30 ' +
+  'ring-1 ring-inset ring-green-400/45 [&>button]:text-green-100';
 
 function hexToRgba(hex: string, alpha: number): string {
   const t = hex.trim().replace('#', '');
@@ -149,17 +152,6 @@ type ExpenseDisplayGroup = {
  * total do mês cair sem que se tivesse gasto menos. Aqui elas são legenda da
  * fatura, não parcela dela.
  */
-/**
- * Se a célula ganha a segunda linha. Fica fora do componente porque quem decide
- * onde pintar o realce de “pago” precisa saber disto antes de renderizar.
- */
-function hasCardResidualHint(
-  breakdown: CardBreakdown,
-  subscriptions?: { count: number },
-): boolean {
-  return breakdown.itemizedCount > 0 || (subscriptions?.count ?? 0) > 0;
-}
-
 function CardResidualHint({
   breakdown,
   subscriptions,
@@ -1078,15 +1070,14 @@ export function ExpensesSheet({
                       const cardBreakdown =
                         item.is_card && effective > 0 ? getCardBreakdown(item.id, month) : null;
                       const cardSubscriptions = subscriptionsByCard.get(item.id);
-                      /** Duas linhas na célula: o realce sobe para o bloco (ver PAID_BLOCK_CLASS). */
-                      const paidBlock =
-                        isPaid &&
-                        cardBreakdown != null &&
-                        hasCardResidualHint(cardBreakdown, cardSubscriptions);
+                      /** Linha de cartão: o realce sobe para o bloco (ver PAID_BLOCK_CLASS). */
+                      const paidBlock = isPaid && cardBreakdown != null;
                       return (
                         <td
                           key={item.id}
-                          className={`border-b border-border/50 min-w-40 whitespace-nowrap px-0 ${colIdx > 0 ? 'border-l border-border/40' : ''}`}
+                          /** `h-px` é mínimo, não altura real: dá à célula um valor
+                              definido para o `h-full` do bloco de “pago” resolver. */
+                          className={`h-px border-b border-border/50 min-w-40 whitespace-nowrap px-0 ${colIdx > 0 ? 'border-l border-border/40' : ''}`}
                           style={cellBg ? { backgroundColor: cellBg } : undefined}
                         >
                           <div
@@ -1117,7 +1108,12 @@ export function ExpensesSheet({
                               parseInput={money.parse}
                               highlightVariant="success"
                               highlightActive={isPaid && !paidBlock}
-                              className="px-2 py-1.5 text-sm leading-normal tabular-nums hover:bg-surface-3/25 hover:rounded-md"
+                              className={cn(
+                                'px-2 py-1.5 text-sm leading-normal tabular-nums',
+                                /* Sobre o bloco verde o realce já é o fundo; um
+                                   hover cinza por cima só sujaria. */
+                                !paidBlock && 'hover:bg-surface-3/25 hover:rounded-md',
+                              )}
                               onArrowUp={() => {
                                 const idx = allMonths.indexOf(month);
                                 if (idx > 0) {
