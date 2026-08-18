@@ -59,6 +59,19 @@ const BUDGET_CLASS_BADGE: Record<BudgetClass, 'info' | 'warning' | 'success' | '
 
 const SPREADSHEET_DATA_COL = 'min-w-40 whitespace-nowrap px-2';
 
+/**
+ * Realce de “pago” quando a célula tem duas linhas (valor + “a detalhar”).
+ *
+ * O `InlineAmountCell` pinta o próprio verde, mas só no botão do valor — numa
+ * linha de cartão a segunda linha ficava de fora e a borda cortava a célula ao
+ * meio. Aqui o verde envolve o bloco inteiro e o botão fica transparente por
+ * dentro; as cores repetem as do design system de propósito, para as duas
+ * formas de realce serem indistinguíveis na planilha.
+ */
+const PAID_BLOCK_CLASS =
+  'rounded-md bg-green-600/30 ring-1 ring-inset ring-green-400/45 ' +
+  '[&>button]:text-green-100 [&>button]:hover:bg-green-600/10';
+
 function hexToRgba(hex: string, alpha: number): string {
   const t = hex.trim().replace('#', '');
   if (t.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(t)) return `rgba(100, 116, 139, ${alpha})`;
@@ -133,14 +146,28 @@ type ExpenseDisplayGroup = {
  * total do mês cair sem que se tivesse gasto menos. Aqui elas são legenda da
  * fatura, não parcela dela.
  */
+/**
+ * Se a célula ganha a segunda linha. Fica fora do componente porque quem decide
+ * onde pintar o realce de “pago” precisa saber disto antes de renderizar.
+ */
+function hasCardResidualHint(
+  breakdown: CardBreakdown,
+  subscriptions?: { count: number },
+): boolean {
+  return breakdown.itemizedCount > 0 || (subscriptions?.count ?? 0) > 0;
+}
+
 function CardResidualHint({
   breakdown,
   subscriptions,
   money,
+  paid = false,
 }: {
   breakdown: CardBreakdown;
   subscriptions?: { total: number; count: number };
   money: MoneyFormat;
+  /** Sobre o verde de “pago”: o cinza do tema some, então o texto clareia. */
+  paid?: boolean;
 }) {
   const showResidual = breakdown.itemizedCount > 0;
   const showSubscriptions = (subscriptions?.count ?? 0) > 0;
@@ -151,7 +178,7 @@ function CardResidualHint({
     <div className="-mt-1.5 px-2 pb-1 text-right text-[10px] leading-tight tabular-nums">
       {showSubscriptions && (
         <div
-          className="text-text-secondary"
+          className={paid ? 'text-green-100/70' : 'text-text-secondary'}
           title={`${subscriptions!.count} assinatura(s) ativa(s) vinculada(s) a este cartão. Não abate do “a detalhar”: a lista de assinaturas é informativa e não entra no total do mês. Anuais contam pelo equivalente mensal, e a lista não tem histórico — vale a de hoje.`}
         >
           assinaturas {money.format(subscriptions!.total)}
@@ -166,7 +193,15 @@ function CardResidualHint({
         </span>
       ) : (
         <span
-          className={breakdown.residualAmount > 0 ? 'text-text-secondary' : 'text-success'}
+          className={
+            paid
+              ? breakdown.residualAmount > 0
+                ? 'text-green-100/80'
+                : 'font-semibold text-green-100'
+              : breakdown.residualAmount > 0
+                ? 'text-text-secondary'
+                : 'text-success'
+          }
           title={`Fatura ${money.format(breakdown.invoiceAmount)} · detalhado ${money.format(breakdown.itemizedAmount)} em ${breakdown.itemizedCount} linha(s)`}
         >
           a detalhar {money.format(breakdown.residualAmount)}
@@ -1036,6 +1071,15 @@ export function ExpensesSheet({
                       const entry = getEntry(item.id, month);
                       const effective = getEffectiveExpenseAmount(item.id, month);
                       const cellBg = columnTint(tint, colIdx);
+                      const isPaid = entry?.is_paid ?? false;
+                      const cardBreakdown =
+                        item.is_card && effective > 0 ? getCardBreakdown(item.id, month) : null;
+                      const cardSubscriptions = subscriptionsByCard.get(item.id);
+                      /** Duas linhas na célula: o realce sobe para o bloco (ver PAID_BLOCK_CLASS). */
+                      const paidBlock =
+                        isPaid &&
+                        cardBreakdown != null &&
+                        hasCardResidualHint(cardBreakdown, cardSubscriptions);
                       return (
                         <td
                           key={item.id}
@@ -1044,7 +1088,10 @@ export function ExpensesSheet({
                         >
                           <div
                             data-cell={`${item.id}:${month}`}
-                            className="relative w-full cursor-pointer select-none [-webkit-touch-callout:none]"
+                            className={cn(
+                              'relative w-full cursor-pointer select-none [-webkit-touch-callout:none]',
+                              paidBlock && PAID_BLOCK_CLASS,
+                            )}
                             onContextMenu={
                               effective > 0
                                 ? (e) => {
@@ -1054,7 +1101,7 @@ export function ExpensesSheet({
                                       y: e.clientY,
                                       itemId: item.id,
                                       month,
-                                      isPaid: entry?.is_paid ?? false,
+                                      isPaid,
                                     });
                                   }
                                 : undefined
@@ -1066,7 +1113,7 @@ export function ExpensesSheet({
                               formatDisplay={money.format}
                               parseInput={money.parse}
                               highlightVariant="success"
-                              highlightActive={entry?.is_paid ?? false}
+                              highlightActive={isPaid && !paidBlock}
                               className="px-2 py-1.5 text-sm leading-normal tabular-nums hover:bg-surface-3/25 hover:rounded-md"
                               onArrowUp={() => {
                                 const idx = allMonths.indexOf(month);
@@ -1085,11 +1132,12 @@ export function ExpensesSheet({
                             />
                             {/* Numa linha de cartão, o valor é a fatura — e o que
                                 interessa saber é quanto dela ainda não tem nome. */}
-                            {item.is_card && effective > 0 && (
+                            {cardBreakdown && (
                               <CardResidualHint
-                                breakdown={getCardBreakdown(item.id, month)}
-                                subscriptions={subscriptionsByCard.get(item.id)}
+                                breakdown={cardBreakdown}
+                                subscriptions={cardSubscriptions}
                                 money={money}
+                                paid={paidBlock}
                               />
                             )}
                           </div>
