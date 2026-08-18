@@ -67,9 +67,12 @@ const SPREADSHEET_DATA_COL = 'min-w-40 whitespace-nowrap px-2';
  * meio. Aqui o verde envolve o bloco inteiro e o botão fica transparente por
  * dentro; as cores repetem as do design system de propósito, para as duas
  * formas de realce serem indistinguíveis na planilha.
+ *
+ * Canto reto de propósito: a planilha é uma grade de células quadradas, e um
+ * bloco arredondado desse tamanho salta da linha.
  */
 const PAID_BLOCK_CLASS =
-  'rounded-md bg-green-600/30 ring-1 ring-inset ring-green-400/45 ' +
+  'bg-green-600/30 ring-1 ring-inset ring-green-400/45 ' +
   '[&>button]:text-green-100 [&>button]:hover:bg-green-600/10';
 
 function hexToRgba(hex: string, alpha: number): string {
