@@ -60,19 +60,21 @@ const BUDGET_CLASS_BADGE: Record<BudgetClass, 'info' | 'warning' | 'success' | '
 const SPREADSHEET_DATA_COL = 'min-w-40 whitespace-nowrap px-2';
 
 /**
- * Realce de “pago” quando a célula tem duas linhas (valor + “a detalhar”).
+ * Realce de “pago” na planilha.
  *
- * O `InlineAmountCell` pinta o próprio verde, mas só no botão do valor — numa
- * linha de cartão a segunda linha ficava de fora e a borda cortava a célula ao
- * meio. Aqui o verde envolve o bloco inteiro e o botão fica transparente por
- * dentro; as cores repetem as do design system de propósito, para as duas
- * formas de realce serem indistinguíveis na planilha.
+ * O `InlineAmountCell` pinta o próprio verde, mas só no botão do valor: numa
+ * linha de cartão a segunda linha (“a detalhar” / “assinaturas”) ficava de fora
+ * e a borda cortava a célula ao meio. Aqui o verde envolve o bloco inteiro e o
+ * botão fica transparente por dentro; as cores repetem as do design system de
+ * propósito, para o realce não mudar de cara.
  *
- * Canto reto de propósito: a planilha é uma grade de células quadradas, e um
- * bloco arredondado desse tamanho salta da linha. Pelo mesmo motivo o bloco
- * ocupa a célula toda (`h-full`): numa linha em que outro cartão tem a segunda
- * linha, um verde da altura só do valor ficaria menor que os vizinhos. O
- * `justify-center` mantém o valor onde o alinhamento da tabela já o punha.
+ * Vale para toda célula paga, com ou sem segunda linha: uma célula de cartão
+ * com o verde da altura da célula ao lado de uma célula comum com o verde da
+ * altura do valor é a mesma inconsistência, só que na horizontal.
+ *
+ * Canto reto e `h-full` de propósito — a planilha é uma grade, e um verde
+ * arredondado ou mais baixo que a linha salta. O `justify-center` mantém o
+ * valor onde o alinhamento da tabela já o punha.
  */
 const PAID_BLOCK_CLASS =
   'flex h-full flex-col justify-center bg-green-600/30 ' +
@@ -1074,8 +1076,8 @@ export function ExpensesSheet({
                       const cardBreakdown =
                         item.is_card && effective > 0 ? getCardBreakdown(item.id, month) : null;
                       const cardSubscriptions = subscriptionsByCard.get(item.id);
-                      /** Linha de cartão: o realce sobe para o bloco (ver PAID_BLOCK_CLASS). */
-                      const paidBlock = isPaid && cardBreakdown != null;
+                      /** Célula com valor e paga: o realce é o bloco (ver PAID_BLOCK_CLASS). */
+                      const paidBlock = isPaid && effective > 0;
                       return (
                         <td
                           key={item.id}
@@ -1110,8 +1112,6 @@ export function ExpensesSheet({
                               onSave={(v) => handleSave(item.id, month, v)}
                               formatDisplay={money.format}
                               parseInput={money.parse}
-                              highlightVariant="success"
-                              highlightActive={isPaid && !paidBlock}
                               className={cn(
                                 'px-2 py-1.5 text-sm leading-normal tabular-nums',
                                 /* Sobre o bloco verde o realce já é o fundo; um
