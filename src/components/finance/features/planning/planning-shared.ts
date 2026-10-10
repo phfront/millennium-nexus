@@ -60,8 +60,7 @@ export type AddBarForm = {
 
 /**
  * Rascunho para a prévia; null enquanto não tem valor. O campo é
- * `type="number"`, então `amountRaw` já vem com ponto decimal — não passa por
- * `parseMoneyInput`, que lê "9.000" como 9.
+ * `type="number"`, então `amountRaw` já vem com ponto decimal e `Number` basta.
  */
 export function draftFromForm(form: AddBarForm): PlanPurchaseShape | null {
   const typed = Number(form.amountRaw);
