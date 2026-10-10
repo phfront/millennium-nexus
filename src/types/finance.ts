@@ -37,8 +37,26 @@ export type IncomeEntry = {
   source_id: string;
   month: string; // 'YYYY-MM-DD' — sempre dia 01
   amount: number;
+  /**
+   * Cotação travada: quantas unidades de `fx_quote_currency` vale 1 unidade da
+   * moeda deste lançamento. `null` = ainda não recebido, converte pela cotação
+   * viva (e portanto ainda oscila). Costuma ser derivada do valor que caiu na
+   * conta, por isso é o câmbio efetivo — já com spread e tarifas.
+   */
+  fx_rate: number | null;
+  /** Lado de destino do par travado; sem ele o número não significa nada. */
+  fx_quote_currency: string | null;
+  /** Quando foi travada — é o que marca "esta receita já entrou". */
+  fx_locked_at: string | null;
   created_at: string;
 };
+
+/** true quando o lançamento já tem cotação travada (ou seja, já foi recebido). */
+export function isIncomeEntryFxLocked(
+  entry: Pick<IncomeEntry, 'fx_rate' | 'fx_quote_currency'> | null | undefined,
+): boolean {
+  return !!entry?.fx_rate && !!entry.fx_quote_currency;
+}
 
 export type ExpenseCategory = {
   id: string;
@@ -176,6 +194,14 @@ export type Subscription = {
   billing_cycle: 'monthly' | 'yearly';
   renewal_day: number | null;
   is_active: boolean;
+  /**
+   * Item-cartão (`ExpenseItem.is_card`) em que esta assinatura é cobrada.
+   * Ao contrário das despesas, aqui o ponteiro é só organizacional: as
+   * assinaturas não entram no total do mês nem no orçamento, então apontar
+   * para um cartão não muda nenhuma conta — serve para saber o que compõe
+   * cada fatura. `null` = fora de cartão ou por definir.
+   */
+  paid_with_item_id: string | null;
   created_at: string;
 };
 
@@ -190,6 +216,29 @@ export type Receivable = {
   reference_month: string | null;
   is_paid: boolean;
   paid_at: string | null;
+  /** Regra recorrente que gerou esta cobrança; null = avulsa. */
+  series_id: string | null;
+  created_at: string;
+};
+
+/**
+ * Regra de cobrança recorrente. Não é cobrança: as cobranças são linhas de
+ * `Receivable` geradas a partir daqui, uma por mês, até o mês corrente —
+ * nunca futuras, porque o que ainda não venceu não é dívida.
+ */
+export type ReceivableSeries = {
+  id: string;
+  user_id: string;
+  person_name: string;
+  description: string;
+  amount: number;
+  /** Dia em que costuma cair (1–31); informativo, não gera vencimento. */
+  due_day: number | null;
+  /** Primeiro mês cobrado ('YYYY-MM-DD', dia 01). */
+  start_month: string;
+  /** Último mês cobrado; null = sem fim previsto. */
+  end_month: string | null;
+  is_active: boolean;
   created_at: string;
 };
 

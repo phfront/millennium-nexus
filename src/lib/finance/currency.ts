@@ -6,6 +6,8 @@
  * - Fontes de renda com `currency` própria guardam o valor na moeda delas; a
  *   conversão para a moeda de exibição usa a cotação atual (ver
  *   `use-exchange-rates`), portanto o valor apresentado acompanha o câmbio.
+ * - …até o lançamento ser recebido: aí a cotação daquele mês é travada na
+ *   linha (`fx_rate`) e o valor deixa de oscilar. Ver `convertMoneyAtLockedRate`.
  */
 
 export const DEFAULT_DISPLAY_CURRENCY = 'BRL';
@@ -76,11 +78,44 @@ export function currencyName(currency: string): string {
   }
 }
 
-/** Aceita `1.234,56`, `1234.56`, `R$ 1.234,56` — mesma tolerância do input antigo. */
+/**
+ * Lê o valor digitado: `1.234,56`, `R$ 1.234,56`, `9.000`, `1234,5`, `1234.56`.
+ *
+ * Antes só trocava a primeira vírgula por ponto, e o `parseFloat` parava no
+ * segundo ponto: "9.000" virava 9 e "1.234,56" virava 1,234 (MLL-3). A regra
+ * agora é a do pt-BR, sem quebrar o que já vinha com ponto decimal:
+ * - vírgula e ponto juntos: o último que aparece é o decimal;
+ * - só vírgula: é o decimal;
+ * - só ponto, em grupos de 3 (`9.000`, `1.234.567`): é milhar;
+ * - só ponto em outro formato (`1234.56`, `12.5`): é decimal. É o que o
+ *   `InlineAmountCell` manda ao editar (`String(value)`), e valor de dinheiro
+ *   nunca tem 3 casas, então "1.234" não tem como ser decimal.
+ */
 export function parseMoneyInput(raw: string): number {
-  const cleaned = raw.replace(/[^\d,.-]/g, '').replace(',', '.');
-  const n = parseFloat(cleaned);
-  return isNaN(n) ? 0 : n;
+  const cleaned = raw.replace(/[^\d,.-]/g, '');
+  const negative = cleaned.startsWith('-');
+  const body = cleaned.replace(/-/g, '');
+  const lastComma = body.lastIndexOf(',');
+  const lastDot = body.lastIndexOf('.');
+
+  let normalized: string;
+  if (lastComma >= 0 && lastDot >= 0) {
+    const decimal = lastComma > lastDot ? ',' : '.';
+    const thousands = decimal === ',' ? /\./g : /,/g;
+    normalized = body.replace(thousands, '').replace(decimal, '.');
+  } else if (lastComma >= 0) {
+    // Várias vírgulas ("1,234,5"): fica a última como decimal.
+    normalized = body.replace(/,(?=.*,)/g, '').replace(',', '.');
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(body)) {
+    normalized = body.replace(/\./g, '');
+  } else {
+    // Vários pontos fora do padrão de milhar ("1.2.3"): fica o último como decimal.
+    normalized = body.replace(/\.(?=.*\.)/g, '');
+  }
+
+  const n = parseFloat(normalized);
+  if (isNaN(n)) return 0;
+  return negative ? -n : n;
 }
 
 /**
@@ -101,6 +136,48 @@ export function convertMoney(
   const toRate = ratesPerUsd?.[dst];
   if (!fromRate || !toRate) return amount;
   return (amount * toRate) / fromRate;
+}
+
+/**
+ * Como `convertMoney`, mas honrando a cotação travada num lançamento.
+ *
+ * Espelha `finance_income_entry_factor` na BD — se divergir, a planilha e os
+ * totais passam a dizer números diferentes sobre o mesmo mês. Sem cotação
+ * travada cai em `convertMoney` (cotação viva, valor ainda oscila). Travada
+ * noutro destino que não o atual, encadeia: travado até `lockedQuote`, vivo
+ * daí em diante — é o que impede uma troca de moeda de exibição de reler
+ * "1 GBP = 6,7491" como se fosse em dólares.
+ */
+export function convertMoneyAtLockedRate(
+  amount: number,
+  from: string | null | undefined,
+  to: string,
+  ratesPerUsd: Record<string, number> | null | undefined,
+  lockedRate: number | null | undefined,
+  lockedQuote: string | null | undefined,
+): number {
+  const src = normalizeCurrencyCode(from, to);
+  const dst = normalizeCurrencyCode(to);
+  if (src === dst) return amount;
+  if (!lockedRate || lockedRate <= 0 || !lockedQuote) {
+    return convertMoney(amount, src, dst, ratesPerUsd);
+  }
+  const quote = normalizeCurrencyCode(lockedQuote, dst);
+  const atQuote = amount * lockedRate;
+  return quote === dst ? atQuote : convertMoney(atQuote, quote, dst, ratesPerUsd);
+}
+
+/**
+ * Cotação efetiva a partir do que realmente caiu na conta: `recebido / bruto`.
+ * `null` quando não dá para dividir — travar com base num valor bruto zero
+ * inventaria uma cotação infinita.
+ */
+export function deriveRateFromReceived(
+  nativeAmount: number,
+  receivedAmount: number,
+): number | null {
+  if (!(nativeAmount > 0) || !(receivedAmount > 0)) return null;
+  return receivedAmount / nativeAmount;
 }
 
 /** Cotação de 1 unidade de `from` em `to` (para mostrar "1 USD = 5,42 BRL"). */

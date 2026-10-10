@@ -23,6 +23,28 @@ export function formatMonthChartAxisShort(monthStr: string): string {
   return format(d, 'MM/yy', { locale: ptBR });
 }
 
+/** Rótulo curto de coluna: `nov/26`. */
+export function formatMonthShort(monthStr: string): string {
+  return format(parseISO(monthStr.slice(0, 10)), 'MMM/yy', { locale: ptBR });
+}
+
+const amountPlainFormatter = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
+
+/**
+ * Valor sem símbolo e sem centavos (`1.800`), para células apertadas de grade
+ * em que a coluna já diz a moeda. Para valor solto, use `useMoneyFormat()`.
+ */
+export function formatAmountPlain(value: number): string {
+  return amountPlainFormatter.format(Math.round(value));
+}
+
+/** Idem, com sinal explícito (`+2.700`, `−4.690`) para sobra e saldo. */
+export function formatAmountSigned(value: number): string {
+  const r = Math.round(value);
+  if (r === 0) return '0';
+  return (r > 0 ? '+' : '−') + amountPlainFormatter.format(Math.abs(r));
+}
+
 export function formatMonthLong(monthStr: string): string {
   const d = parseISO(monthStr);
   return format(d, "MMMM 'de' yyyy", { locale: ptBR });

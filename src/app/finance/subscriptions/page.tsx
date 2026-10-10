@@ -8,7 +8,7 @@ export default async function SubscriptionsPage() {
   if (!user) redirect('/login');
 
   return (
-    <div className="flex flex-col gap-6 max-w-2xl mx-auto">
+    <div className="flex flex-col gap-6 max-w-2xl md:max-w-5xl mx-auto">
       <PageHeader title="Assinaturas" subtitle="Gerencie suas assinaturas ativas e inativas." />
       <SubscriptionsList />
     </div>

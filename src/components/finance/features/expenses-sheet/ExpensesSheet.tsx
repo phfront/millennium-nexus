@@ -22,6 +22,7 @@ import {
   useToast,
 } from '@phfront/millennium-ui';
 import { useExpenses } from '@/hooks/finance/use-expenses';
+import { useSubscriptions } from '@/hooks/finance/use-subscriptions';
 import { useFinanceMonthSnapshots } from '@/hooks/finance/use-finance-month-snapshots';
 import { formatMonth } from '@/lib/finance/format';
 import { currencySymbol } from '@/lib/finance/currency';
@@ -58,6 +59,31 @@ const BUDGET_CLASS_BADGE: Record<BudgetClass, 'info' | 'warning' | 'success' | '
 
 const SPREADSHEET_DATA_COL = 'min-w-40 whitespace-nowrap px-2';
 
+/**
+ * Realce de “pago” na planilha.
+ *
+ * O `InlineAmountCell` pinta o próprio verde, mas só no botão do valor: numa
+ * linha de cartão a segunda linha (“a detalhar” / “assinaturas”) ficava de fora
+ * e a borda cortava a célula ao meio. Aqui o verde envolve o bloco inteiro e o
+ * botão fica transparente por dentro; as cores repetem as do design system de
+ * propósito, para o realce não mudar de cara.
+ *
+ * Vale para toda célula paga, com ou sem segunda linha: uma célula de cartão
+ * com o verde da altura da célula ao lado de uma célula comum com o verde da
+ * altura do valor é a mesma inconsistência, só que na horizontal.
+ *
+ * Canto reto e `h-full` de propósito — a planilha é uma grade, e um verde
+ * arredondado ou mais baixo que a linha salta. O `justify-center` mantém o
+ * valor onde o alinhamento da tabela já o punha.
+ */
+const PAID_BLOCK_CLASS =
+  'flex h-full flex-col justify-center bg-green-600/30 ' +
+  'ring-1 ring-inset ring-green-400/45 [&>button]:text-green-100 ' +
+  /* O próprio InlineAmountCell aplica `hover:bg-surface-3` sempre que o
+     realce dele está desligado — e aqui ele está, porque o verde é nosso.
+     Só um seletor mais específico apaga esse cinza por cima do bloco. */
+  '[&>button:hover]:bg-transparent';
+
 function hexToRgba(hex: string, alpha: number): string {
   const t = hex.trim().replace('#', '');
   if (t.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(t)) return `rgba(100, 116, 139, ${alpha})`;
@@ -68,12 +94,27 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 function categoryTint(color: string | null | undefined) {
-  if (!color) return { band: undefined as string | undefined, cell: undefined as string | undefined, accent: undefined as string | undefined };
+  if (!color) {
+    return {
+      band: undefined as string | undefined,
+      cell: undefined as string | undefined,
+      /** Sem cor de categoria não há alternância: o zebrado das linhas fica visível. */
+      cellAlt: undefined as string | undefined,
+      accent: undefined as string | undefined,
+    };
+  }
   return {
     band: hexToRgba(color, 0.18),
-    cell: hexToRgba(color, 0.08),
+    cell: hexToRgba(color, 0.07),
+    /** Colunas ímpares do grupo: mesma cor, um passo mais forte — separa sem virar listra. */
+    cellAlt: hexToRgba(color, 0.13),
     accent: color,
   };
+}
+
+/** Fundo da coluna dentro do grupo: alterna para as colunas vizinhas não se fundirem. */
+function columnTint(tint: ReturnType<typeof categoryTint>, index: number): string | undefined {
+  return index % 2 === 1 ? tint.cellAlt : tint.cell;
 }
 
 const UNCATEGORIZED_ID = '__uncategorized__' as const;
@@ -110,20 +151,41 @@ type ExpenseDisplayGroup = {
  * No arquivo do mês a mesma quantia chama-se “restante” (ver a vista
  * finance_expense_archive_rows): num mês fechado já não há nada a detalhar,
  * e pedir uma ação sobre o passado seria mentira.
+ *
+ * As assinaturas vinculadas a este cartão aparecem numa linha à parte, e de
+ * propósito NÃO entram no cálculo do restante: elas não somam em lado nenhum
+ * (nem no total do mês, nem no orçamento), então abatê-las da fatura faria o
+ * total do mês cair sem que se tivesse gasto menos. Aqui elas são legenda da
+ * fatura, não parcela dela.
  */
 function CardResidualHint({
   breakdown,
+  subscriptions,
   money,
+  paid = false,
 }: {
   breakdown: CardBreakdown;
+  subscriptions?: { total: number; count: number };
   money: MoneyFormat;
+  /** Sobre o verde de “pago”: o cinza do tema some, então o texto clareia. */
+  paid?: boolean;
 }) {
-  if (breakdown.itemizedCount === 0) return null;
+  const showResidual = breakdown.itemizedCount > 0;
+  const showSubscriptions = (subscriptions?.count ?? 0) > 0;
+  if (!showResidual && !showSubscriptions) return null;
   const over = breakdown.residualAmount < 0;
 
   return (
-    <div className="px-2 pb-1 text-right text-[10px] leading-tight tabular-nums">
-      {over ? (
+    <div className="-mt-1.5 px-2 pb-1 text-right text-[10px] leading-tight tabular-nums">
+      {showSubscriptions && (
+        <div
+          className={paid ? 'text-green-100/70' : 'text-text-secondary'}
+          title={`${subscriptions!.count} assinatura(s) ativa(s) vinculada(s) a este cartão. Não abate do “a detalhar”: a lista de assinaturas é informativa e não entra no total do mês. Anuais contam pelo equivalente mensal, e a lista não tem histórico — vale a de hoje.`}
+        >
+          assinaturas {money.format(subscriptions!.total)}
+        </div>
+      )}
+      {showResidual && (over ? (
         <span
           className="font-semibold text-danger"
           title="As linhas pagas dentro deste cartão somam mais do que a fatura — ou falta valor na fatura, ou há linha a mais"
@@ -132,12 +194,20 @@ function CardResidualHint({
         </span>
       ) : (
         <span
-          className={breakdown.residualAmount > 0 ? 'text-text-secondary' : 'text-success'}
+          className={
+            paid
+              ? breakdown.residualAmount > 0
+                ? 'text-green-100/80'
+                : 'font-semibold text-green-100'
+              : breakdown.residualAmount > 0
+                ? 'text-text-secondary'
+                : 'text-success'
+          }
           title={`Fatura ${money.format(breakdown.invoiceAmount)} · detalhado ${money.format(breakdown.itemizedAmount)} em ${breakdown.itemizedCount} linha(s)`}
         >
           a detalhar {money.format(breakdown.residualAmount)}
         </span>
-      )}
+      ))}
     </div>
   );
 }
@@ -272,6 +342,7 @@ export function ExpensesSheet({
     ensureRecurringExpenseEntriesForMonths,
     fillItemColumnForMonths,
   } = useExpenses();
+  const { active: activeSubscriptions } = useSubscriptions();
   const { toast } = useToast();
   const { snapshots } = useFinanceMonthSnapshots();
   const [columnFillTarget, setColumnFillTarget] = useState<{ itemId: string; name: string } | null>(null);
@@ -306,6 +377,21 @@ export function ExpensesSheet({
   const [formPaidWithItemId, setFormPaidWithItemId] = useState('');
   /** Um cartão não se paga dentro de si próprio. */
   const selectableCardItems = cardItems.filter((c) => c.id !== editingItemId);
+  /**
+   * Quanto de assinatura ativa está vinculado a cada cartão, para a coluna
+   * poder dizê-lo. Anuais entram pelo equivalente mensal — é a mesma conta da
+   * tela de Assinaturas, e sem saber o mês da renovação não há melhor.
+   */
+  const subscriptionsByCard = useMemo(() => {
+    const acc = new Map<string, { total: number; count: number }>();
+    for (const s of activeSubscriptions) {
+      if (!s.paid_with_item_id) continue;
+      const monthly = s.billing_cycle === 'yearly' ? s.amount / 12 : s.amount;
+      const cur = acc.get(s.paid_with_item_id) ?? { total: 0, count: 0 };
+      acc.set(s.paid_with_item_id, { total: cur.total + monthly, count: cur.count + 1 });
+    }
+    return acc;
+  }, [activeSubscriptions]);
   const [formActive, setFormActive] = useState(true);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState('');
@@ -853,32 +939,48 @@ export function ExpensesSheet({
               {expenseDisplayGroups.map((g) => {
                 if (collapsedCats.has(g.id)) return null;
                 const tint = g.isUncategorized ? categoryTint(null) : categoryTint(g.color);
-                return g.items.map((item) => (
+                return g.items.map((item, colIdx) => (
                   <th
                     key={item.id}
-                    className={`align-top border-b border-border bg-surface-2 ${SPREADSHEET_DATA_COL} py-2`}
-                    style={tint.cell ? { backgroundColor: tint.cell } : undefined}
+                    className={`align-top border-b border-border bg-surface-2 ${SPREADSHEET_DATA_COL} py-2 ${colIdx > 0 ? 'border-l border-border/40' : ''}`}
+                    style={columnTint(tint, colIdx) ? { backgroundColor: columnTint(tint, colIdx) } : undefined}
                   >
-                    <div className="relative min-h-13">
-                      <button
-                        type="button"
-                        className="absolute left-0 top-0 z-10 p-1 rounded-md text-text-muted hover:text-brand-primary hover:bg-surface-3 transition-colors cursor-pointer"
-                        title="Preencher todos os meses visíveis com o mesmo valor"
-                        aria-label={`Preencher coluna ${item.name} em todos os meses`}
-                        onClick={() => setColumnFillTarget({ itemId: item.id, name: item.name })}
-                      >
-                        <Columns2 size={16} strokeWidth={2} />
-                      </button>
-                      <span className="block w-full pl-8 text-left text-sm font-semibold text-text-secondary leading-snug">
+                    <div className="flex min-h-13 flex-col gap-1">
+                      <span className="flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-text-secondary leading-snug">
                         <span className="whitespace-nowrap" title={item.name}>
                           {item.name}
                         </span>
+                        <span className="flex shrink-0 items-center gap-0">
+                          <button
+                            type="button"
+                            className="shrink-0 p-1 rounded-md text-text-muted hover:text-brand-primary hover:bg-surface-3 transition-colors cursor-pointer"
+                            title="Preencher todos os meses visíveis com o mesmo valor"
+                            aria-label={`Preencher coluna ${item.name} em todos os meses`}
+                            onClick={() => setColumnFillTarget({ itemId: item.id, name: item.name })}
+                          >
+                            <Columns2 size={16} strokeWidth={2} />
+                          </button>
+                          <button
+                            type="button"
+                            className="-mr-1 shrink-0 p-1 rounded-md text-text-muted hover:text-brand-primary hover:bg-surface-3 transition-colors cursor-pointer"
+                            title="Editar esta despesa"
+                            aria-label={`Editar ${item.name}`}
+                            onClick={() => {
+                              beginEditItem(item);
+                              setShowManage(true);
+                            }}
+                          >
+                            <Pencil size={14} strokeWidth={2} />
+                          </button>
+                        </span>
+                      </span>
+                      <span className="block w-full text-left text-sm font-semibold text-text-secondary leading-snug">
                         {(item.budget_class ||
                           item.is_recurring ||
                           item.due_day != null ||
                           item.is_card ||
                           item.paid_with_item_id) && (
-                          <span className="mt-1 flex flex-wrap items-center gap-1">
+                          <span className="flex flex-wrap items-center gap-1">
                             {item.is_card && (
                               <Badge
                                 variant="info"
@@ -966,18 +1068,30 @@ export function ExpensesSheet({
                         </td>
                       );
                     }
-                    return g.items.map((item) => {
+                    return g.items.map((item, colIdx) => {
                       const entry = getEntry(item.id, month);
                       const effective = getEffectiveExpenseAmount(item.id, month);
+                      const cellBg = columnTint(tint, colIdx);
+                      const isPaid = entry?.is_paid ?? false;
+                      const cardBreakdown =
+                        item.is_card && effective > 0 ? getCardBreakdown(item.id, month) : null;
+                      const cardSubscriptions = subscriptionsByCard.get(item.id);
+                      /** Célula com valor e paga: o realce é o bloco (ver PAID_BLOCK_CLASS). */
+                      const paidBlock = isPaid && effective > 0;
                       return (
                         <td
                           key={item.id}
-                          className={`border-b border-border/50 min-w-40 whitespace-nowrap px-0`}
-                          style={tint.cell ? { backgroundColor: tint.cell } : undefined}
+                          /** `h-px` é mínimo, não altura real: dá à célula um valor
+                              definido para o `h-full` do bloco de “pago” resolver. */
+                          className={`h-px border-b border-border/50 min-w-40 whitespace-nowrap px-0 ${colIdx > 0 ? 'border-l border-border/40' : ''}`}
+                          style={cellBg ? { backgroundColor: cellBg } : undefined}
                         >
                           <div
                             data-cell={`${item.id}:${month}`}
-                            className="relative w-full cursor-pointer select-none [-webkit-touch-callout:none]"
+                            className={cn(
+                              'relative w-full cursor-pointer select-none [-webkit-touch-callout:none]',
+                              paidBlock && PAID_BLOCK_CLASS,
+                            )}
                             onContextMenu={
                               effective > 0
                                 ? (e) => {
@@ -987,7 +1101,7 @@ export function ExpensesSheet({
                                       y: e.clientY,
                                       itemId: item.id,
                                       month,
-                                      isPaid: entry?.is_paid ?? false,
+                                      isPaid,
                                     });
                                   }
                                 : undefined
@@ -998,9 +1112,12 @@ export function ExpensesSheet({
                               onSave={(v) => handleSave(item.id, month, v)}
                               formatDisplay={money.format}
                               parseInput={money.parse}
-                              highlightVariant="success"
-                              highlightActive={entry?.is_paid ?? false}
-                              className="px-2 py-1.5 text-sm leading-normal tabular-nums hover:bg-surface-3/25 hover:rounded-md"
+                              className={cn(
+                                'px-2 py-1.5 text-sm leading-normal tabular-nums',
+                                /* Sobre o bloco verde o realce já é o fundo; um
+                                   hover cinza por cima só sujaria. */
+                                !paidBlock && 'hover:bg-surface-3/25 hover:rounded-md',
+                              )}
                               onArrowUp={() => {
                                 const idx = allMonths.indexOf(month);
                                 if (idx > 0) {
@@ -1018,10 +1135,12 @@ export function ExpensesSheet({
                             />
                             {/* Numa linha de cartão, o valor é a fatura — e o que
                                 interessa saber é quanto dela ainda não tem nome. */}
-                            {item.is_card && effective > 0 && (
+                            {cardBreakdown && (
                               <CardResidualHint
-                                breakdown={getCardBreakdown(item.id, month)}
+                                breakdown={cardBreakdown}
+                                subscriptions={cardSubscriptions}
                                 money={money}
+                                paid={paidBlock}
                               />
                             )}
                           </div>
@@ -1473,11 +1592,12 @@ export function ExpensesSheet({
                 />
                 <span>
                   <span className="font-medium text-text-primary">
-                    Esta linha é a fatura de um cartão
+                    Esta linha agrupa outras despesas
                   </span>
                   <span className="block text-xs text-text-muted mt-0.5">
-                    O valor que você lança em cada mês passa a ser o total da fatura, e outras despesas
-                    podem declarar-se pagas dentro dela.
+                    O valor que você lança em cada mês passa a ser o total do grupo (a fatura de um
+                    cartão, o aluguel que embute condomínio, o plano de saúde da família), e outras
+                    despesas podem declarar-se pagas dentro dela.
                   </span>
                 </span>
               </label>
@@ -1487,7 +1607,7 @@ export function ExpensesSheet({
                     className="text-[10px] font-medium text-text-muted uppercase tracking-wide block mb-1"
                     htmlFor="expense-paid-with"
                   >
-                    Pago no cartão (opcional)
+                    Pago dentro de (opcional)
                   </label>
                   <select
                     id="expense-paid-with"
@@ -1496,7 +1616,7 @@ export function ExpensesSheet({
                     disabled={selectableCardItems.length === 0}
                     className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-transparent text-sm text-text-primary outline-none ring-1 ring-inset ring-border focus:ring-brand-primary disabled:opacity-60"
                   >
-                    <option value="">Fora de cartão (débito, pix, dinheiro)</option>
+                    <option value="">Não agrupada (soma direto no mês)</option>
                     {selectableCardItems.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -1505,9 +1625,9 @@ export function ExpensesSheet({
                   </select>
                   <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
                     {selectableCardItems.length === 0
-                      ? 'Você ainda não tem nenhuma linha marcada como fatura de cartão. Marque a despesa do cartão (ex.: “Itau Black”) com a opção acima e ela passa a aparecer aqui.'
+                      ? 'Você ainda não tem nenhuma linha marcada como agrupadora. Marque a despesa que reúne as outras (ex.: “Itau Black”) com a opção acima e ela passa a aparecer aqui.'
                       : formPaidWithItemId
-                        ? 'Este item deixa de somar ao total do mês: passa a decompor a fatura desse cartão. O que sobrar da fatura fica no balde que deste ao cartão.'
+                        ? 'Este item deixa de somar ao total do mês: passa a decompor o total dessa linha. O que sobrar dela fica no balde que você deu a ela.'
                         : 'Some ao total do mês por si, como sempre.'}
                   </p>
                 </div>

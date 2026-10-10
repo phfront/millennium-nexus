@@ -3,7 +3,12 @@
 import { useCallback, useMemo } from 'react';
 import { useFinanceSpreadsheetSettings } from '@/contexts/FinanceSpreadsheetSettingsContext';
 import { useExchangeRates } from '@/hooks/finance/use-exchange-rates';
-import { convertMoney, exchangeRateBetween, normalizeCurrencyCode } from '@/lib/finance/currency';
+import {
+  convertMoney,
+  convertMoneyAtLockedRate,
+  exchangeRateBetween,
+  normalizeCurrencyCode,
+} from '@/lib/finance/currency';
 
 /**
  * Conversão para a moeda de exibição do módulo, pela cotação atual.
@@ -17,6 +22,22 @@ export function useCurrencyConversion() {
   const convert = useCallback(
     (amount: number, from: string | null | undefined) =>
       convertMoney(amount, from, displayCurrency, rates),
+    [rates, displayCurrency],
+  );
+
+  /**
+   * Igual a `convert`, mas um lançamento com cotação travada usa a dele — é o
+   * que faz um mês já recebido parar de oscilar. Espelha
+   * `finance_income_entry_factor` na BD.
+   */
+  const convertLocked = useCallback(
+    (
+      amount: number,
+      from: string | null | undefined,
+      lockedRate: number | null | undefined,
+      lockedQuote: string | null | undefined,
+    ) =>
+      convertMoneyAtLockedRate(amount, from, displayCurrency, rates, lockedRate, lockedQuote),
     [rates, displayCurrency],
   );
 
@@ -50,6 +71,7 @@ export function useCurrencyConversion() {
     error,
     refresh,
     convert,
+    convertLocked,
     rateOf,
     isForeign,
   };

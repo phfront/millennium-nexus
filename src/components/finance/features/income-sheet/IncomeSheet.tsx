@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Settings, Columns2, RefreshCw, RotateCcw } from 'lucide-react';
+import { Plus, Settings, Columns2, RefreshCw, RotateCcw, Lock } from 'lucide-react';
 import { Modal, Input, Button, Skeleton, useToast, InlineAmountCell } from '@phfront/millennium-ui';
 import { useIncome } from '@/hooks/finance/use-income';
 import { useMoneyFormat } from '@/hooks/finance/use-money-format';
@@ -16,8 +16,12 @@ import {
 } from '@/lib/finance/finance';
 import { useFinanceSpreadsheetSettings } from '@/contexts/FinanceSpreadsheetSettingsContext';
 import { SpreadsheetColumnFillModal } from '@/components/finance/features/spreadsheet-column-fill-modal/SpreadsheetColumnFillModal';
+import {
+  IncomeFxLockModal,
+  type IncomeFxLockTarget,
+} from '@/components/finance/features/income-fx-lock-modal/IncomeFxLockModal';
 import { CurrencySelect } from '@/components/finance/ui/CurrencySelect';
-import { incomeEntryCurrency, type IncomeSource } from '@/types/finance';
+import { incomeEntryCurrency, isIncomeEntryFxLocked, type IncomeSource } from '@/types/finance';
 
 /** `table-auto` + nowrap: columns grow with label/value; floor fits typical BRL in `text-xs`. */
 const SPREADSHEET_DATA_COL = 'min-w-40 whitespace-nowrap px-2';
@@ -151,6 +155,8 @@ export function IncomeSheet() {
     addSource,
     updateSource,
     changeSourceCurrency,
+    lockEntryFx,
+    unlockEntryFx,
     getEntry,
     ensureDefaultIncomeEntriesForMonths,
     fillSourceColumnForMonths,
@@ -164,6 +170,7 @@ export function IncomeSheet() {
     isLoading: ratesLoading,
     refresh: refreshRates,
     convert,
+    convertLocked,
     rateOf,
     rates,
   } = useCurrencyConversion();
@@ -189,6 +196,10 @@ export function IncomeSheet() {
     name: string;
     currency: string;
   } | null>(null);
+  /** Célula cujo câmbio está a ser travado; guarda o `sourceId`/mês para gravar. */
+  const [fxLockTarget, setFxLockTarget] = useState<
+    (IncomeFxLockTarget & { sourceId: string; entryId: string | null }) | null
+  >(null);
   const [newSourceName, setNewSourceName] = useState('');
   const [newSourceDefault, setNewSourceDefault] = useState('');
   const [newSourceCurrency, setNewSourceCurrency] = useState<string | null>(null);
@@ -297,12 +308,45 @@ export function IncomeSheet() {
     return incomeEntryCurrency(source, month, displayCurrency);
   }
 
+  /**
+   * Valor da célula na moeda de exibição: pela cotação travada se o mês já foi
+   * recebido, pela cotação viva se ainda não. Mesma regra que
+   * `finance_income_entry_factor` aplica nos totais da BD.
+   */
+  function getCellDisplayAmount(source: IncomeSource, month: string): number {
+    const entry = getEntry(source.id, month);
+    return convertLocked(
+      getIncomeCellAmount(source, month),
+      cellCurrency(source, month),
+      entry?.fx_rate,
+      entry?.fx_quote_currency,
+    );
+  }
+
   /** Total do mês já na moeda de exibição (converte as fontes estrangeiras). */
   function getRowTotal(month: string): number {
-    return activeSources.reduce(
-      (sum, s) => sum + convert(getIncomeCellAmount(s, month), cellCurrency(s, month)),
-      0,
-    );
+    return activeSources.reduce((sum, s) => sum + getCellDisplayAmount(s, month), 0);
+  }
+
+  /** Abre o diálogo de travamento com o estado atual da célula. */
+  function openFxLock(source: IncomeSource, month: string) {
+    const entry = getEntry(source.id, month);
+    const entryCurrency = cellCurrency(source, month);
+    const amount = getIncomeCellAmount(source, month);
+    setFxLockTarget({
+      sourceId: source.id,
+      entryId: entry?.id ?? null,
+      sourceName: source.name,
+      month,
+      amount,
+      entryCurrency,
+      lockedRate: isIncomeEntryFxLocked(entry) ? entry!.fx_rate : null,
+      liveAmount: convert(amount, entryCurrency),
+      liveRate: rateOf(entryCurrency),
+      // `finance_ensure_month_snapshots` arquiva tudo o que é anterior ao mês
+      // corrente, e roda na inicialização do módulo — então a regra é exatamente essa.
+      isArchived: month < toMonthDate(new Date()),
+    });
   }
 
   /** Meses a repor no "resetar coluna": o atual e todos os seguintes visíveis. */
@@ -444,6 +488,12 @@ export function IncomeSheet() {
                   {activeSources.map((s) => {
                     const monthCurrency = cellCurrency(s, month);
                     const amount = getIncomeCellAmount(s, month);
+                    const entry = getEntry(s.id, month);
+                    const isForeignCell = monthCurrency !== displayCurrency;
+                    // Travado só significa alguma coisa numa célula que é mesmo
+                    // convertida: antes de `currency_since` o fator é 1.
+                    const showLocked =
+                      isForeignCell && amount !== 0 && isIncomeEntryFxLocked(entry);
                     return (
                       <td key={s.id} className={`border-b border-border/50 ${SPREADSHEET_DATA_COL} py-1`}>
                         <InlineAmountCell
@@ -451,14 +501,39 @@ export function IncomeSheet() {
                           onSave={(v) => handleSave(s.id, month, v)}
                           formatDisplay={(v) => formatMoney(v, monthCurrency)}
                           parseInput={parseMoneyInput}
+                          className={
+                            showLocked
+                              ? 'text-[11px] leading-tight px-1 py-0.5 rounded border border-transparent'
+                              : ''
+                          }
                         />
-                        {monthCurrency !== displayCurrency && amount !== 0 && (
-                          <span
-                            className="block px-1 text-right text-[11px] font-medium leading-tight text-text-secondary"
-                            title={`${formatMoney(amount, monthCurrency)} convertido para ${displayCurrency} pela cotação atual`}
+
+                        {showLocked && (
+                          // Depois de recebido, o número que importa é o que caiu na
+                          // conta — por isso ele leva o destaque, mesmo em baixo.
+                          // A caixa é a mesma da linha `≈` (sem `py`): com padding, a
+                          // célula travada fica 4px mais alta e desalinha a linha toda.
+                          <button
+                            type="button"
+                            onClick={() => openFxLock(s, month)}
+                            className="flex w-full items-center justify-end gap-1 px-1 text-right text-xs font-semibold leading-normal text-green-500 transition-colors cursor-pointer hover:text-green-400"
+                            title={`Câmbio travado: 1 ${monthCurrency} = ${formatMoney(entry!.fx_rate!, entry!.fx_quote_currency!)}. Este mês não muda mais com o mercado — clique para editar ou destravar.`}
                           >
-                            ≈ {money.format(convert(amount, monthCurrency))}
-                          </span>
+                            <Lock size={10} strokeWidth={2.5} className="shrink-0" />
+                            {money.format(getCellDisplayAmount(s, month))}
+                          </button>
+                        )}
+
+                        {isForeignCell && amount !== 0 && !showLocked && (
+                          <button
+                            type="button"
+                            onClick={() => openFxLock(s, month)}
+                            className="flex w-full items-center justify-end gap-1 px-1 text-right text-[11px] font-medium leading-tight text-text-secondary transition-colors cursor-pointer hover:text-brand-primary"
+                            title={`${formatMoney(amount, monthCurrency)} pela cotação de hoje — ainda oscila. Clique para travar o câmbio deste mês.`}
+                          >
+                            <span aria-hidden>≈</span>
+                            {money.format(getCellDisplayAmount(s, month))}
+                          </button>
                         )}
                       </td>
                     );
@@ -494,8 +569,50 @@ export function IncomeSheet() {
             <RefreshCw size={11} className={ratesLoading ? 'animate-spin' : ''} />
             Atualizar
           </button>
+          <span className="basis-full text-text-muted">
+            Os valores convertidos (≈) seguem a cotação do dia e mudam com ela. Quando o dinheiro
+            entrar, clique no valor convertido e informe quanto caiu na conta: o mês fica{' '}
+            <Lock size={10} className="inline-block align-[-1px] text-green-500" /> travado nessa
+            cotação e não muda mais.
+          </span>
         </div>
       )}
+
+      <IncomeFxLockModal
+        target={fxLockTarget}
+        displayCurrency={displayCurrency}
+        onClose={() => setFxLockTarget(null)}
+        onLock={async (rate) => {
+          if (!fxLockTarget) return;
+          try {
+            await lockEntryFx(
+              fxLockTarget.sourceId,
+              fxLockTarget.month,
+              fxLockTarget.amount,
+              rate,
+              displayCurrency,
+            );
+            toast.success(
+              'Câmbio travado',
+              `${fxLockTarget.sourceName} em ${formatMonth(fxLockTarget.month)} fica em 1 ${fxLockTarget.entryCurrency} = ${formatMoney(rate, displayCurrency)}.`,
+            );
+          } catch {
+            toast.error('Erro ao travar o câmbio');
+          }
+        }}
+        onUnlock={async () => {
+          if (!fxLockTarget?.entryId) return;
+          try {
+            await unlockEntryFx(fxLockTarget.entryId);
+            toast.success(
+              'Câmbio destravado',
+              `${formatMonth(fxLockTarget.month)} volta a acompanhar a cotação do dia.`,
+            );
+          } catch {
+            toast.error('Erro ao destravar o câmbio');
+          }
+        }}
+      />
 
       <SpreadsheetColumnFillModal
         isOpen={columnFillTarget != null}

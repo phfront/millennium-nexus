@@ -18,7 +18,16 @@ export function useSubscriptions() {
       .select('*')
       .eq('user_id', user.id)
       .order('is_active', { ascending: false });
-    setSubscriptions((data ?? []) as Subscription[]);
+    setSubscriptions(
+      (data ?? []).map((raw) => {
+        const s = raw as Subscription;
+        return {
+          ...s,
+          amount: Number(s.amount ?? 0),
+          paid_with_item_id: s.paid_with_item_id ?? null,
+        };
+      }),
+    );
     setIsLoading(false);
   }, [user]);
 
@@ -58,6 +67,29 @@ export function useSubscriptions() {
     setSubscriptions((prev) => prev.map((s) => (s.id === id ? (data as Subscription) : s)));
   }
 
+  /**
+   * Aponta várias assinaturas para o mesmo cartão de uma vez (`null` = tirar do
+   * cartão). Uma chamada só: a tela de assinaturas é longa e arrumá-la item a
+   * item era o trabalho que esta função existe para evitar.
+   */
+  async function setCardForMany(ids: string[], cardItemId: string | null) {
+    if (!user || ids.length === 0) return;
+    const previous = subscriptions;
+    setSubscriptions((prev) =>
+      prev.map((s) => (ids.includes(s.id) ? { ...s, paid_with_item_id: cardItemId } : s)),
+    );
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('finance_subscriptions')
+      .update({ paid_with_item_id: cardItemId })
+      .in('id', ids)
+      .eq('user_id', user.id);
+    if (error) {
+      setSubscriptions(previous);
+      throw new Error(error.message);
+    }
+  }
+
   async function deleteSubscription(id: string) {
     if (!user) return;
     const supabase = createClient();
@@ -70,11 +102,13 @@ export function useSubscriptions() {
     setSubscriptions((prev) => prev.filter((s) => s.id !== id));
   }
 
-  const active = subscriptions.filter((s) => s.is_active);
-  const inactive = subscriptions.filter((s) => !s.is_active);
+  /** Ordem alfabética: `localeCompare` e não a do banco, para acentos caírem onde se espera. */
+  const byName = (a: Subscription, b: Subscription) => a.name.localeCompare(b.name, 'pt-BR');
+  const active = subscriptions.filter((s) => s.is_active).sort(byName);
+  const inactive = subscriptions.filter((s) => !s.is_active).sort(byName);
   const monthlyTotal = active.reduce((sum, s) => {
     return sum + (s.billing_cycle === 'yearly' ? s.amount / 12 : s.amount);
   }, 0);
 
-  return { subscriptions, active, inactive, monthlyTotal, isLoading, refetch: fetchAll, addSubscription, updateSubscription, deleteSubscription };
+  return { subscriptions, active, inactive, monthlyTotal, isLoading, refetch: fetchAll, addSubscription, updateSubscription, setCardForMany, deleteSubscription };
 }
