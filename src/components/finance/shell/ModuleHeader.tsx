@@ -8,6 +8,8 @@ import { SidebarMenuButton } from '@/components/shell/SidebarMenuButton';
 
 const ROUTE_LABELS: Record<string, string> = {
   '/finance': 'Finance',
+  '/finance/budget': 'Orçamento',
+  '/finance/planning': 'Planejamento',
   '/finance/income': 'Receitas',
   '/finance/expenses': 'Despesas',
   '/finance/one-time': 'Lançamentos',

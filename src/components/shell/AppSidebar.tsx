@@ -8,6 +8,7 @@ import { SidebarBrandHeader } from "@/components/shell/SidebarBrandHeader";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import {
   Activity,
+  CalendarRange,
   ChevronDown,
   ChevronUp,
   Heart,
@@ -166,6 +167,7 @@ export function AppSidebar({ modules }: AppSidebarProps) {
                 match: (currentPath: string) => currentPath === "/finance",
               },
               { href: "/finance/budget", label: "Orçamento", icon: <PieChart size={16} /> },
+              { href: "/finance/planning", label: "Planejamento", icon: <CalendarRange size={16} /> },
               { href: "/finance/income", label: "Receitas", icon: <Activity size={16} /> },
               { href: "/finance/expenses", label: "Despesas", icon: <Activity size={16} /> },
               { href: "/finance/one-time", label: "Lançamentos", icon: <Activity size={16} /> },
